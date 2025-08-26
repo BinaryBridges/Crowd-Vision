@@ -15,8 +15,7 @@
 ### Steps to run
 
 1. Start virtual environment
-`py -m venv .venv
-.\.venv\Scripts\Activate`
+`py -m venv .venv` & `.\.venv\Scripts\Activate`
 
 2. Install requirements
 `pip install -r requirements.txt`
