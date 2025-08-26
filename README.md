@@ -10,3 +10,16 @@
 </pre>
 
 </div>
+
+
+### Steps to run
+
+1. Start virtual environment
+`py -m venv .venv
+.\.venv\Scripts\Activate`
+
+2. Install requirements
+`pip install -r requirements.txt`
+
+3. Start project
+`python face_id_webcam.py`
