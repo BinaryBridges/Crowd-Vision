@@ -147,6 +147,7 @@ def load_known_people(app: FaceAnalysis, root: str) -> List[Person]:
             # Detect faces in the image
             faces = app.get(img)  # Returns list of detected faces with embeddings
             if not faces:
+                print(f"[skip] no faces detected: {img_path}")
                 continue  # Skip images with no detected faces
 
             # Select the largest face (most prominent person in the image)
@@ -189,6 +190,15 @@ def main():
        - Draw bounding boxes and labels
     5. Display results and handle user input
     """
+    # Display ASCII art banner
+
+    print("██████╗░░█████╗░██████╗░░█████╗░██╗░░██╗  ███████╗██╗░░░██╗███████╗")
+    print("██╔══██╗██╔══██╗██╔══██╗██╔══██╗██║░░██║  ██╔════╝╚██╗░██╔╝██╔════╝")
+    print("██████╔╝██║░░██║██████╔╝██║░░╚═╝███████║  █████╗░░░╚████╔╝░█████╗░░")
+    print("██╔═══╝░██║░░██║██╔══██╗██║░░██╗██╔══██║  ██╔══╝░░░░╚██╔╝░░██╔══╝░░")
+    print("██║░░░░░╚█████╔╝██║░░██║╚█████╔╝██║░░██║  ███████╗░░░██║░░░███████╗")
+    print("╚═╝░░░░░░╚════╝░╚═╝░░╚═╝░╚════╝░╚═╝░░╚═╝  ╚══════╝░░░╚═╝░░░╚══════╝")
+    print("")
 
     # Initialize the face analysis model
     # "buffalo_l" is a pre-trained model that includes face detection and recognition
@@ -202,25 +212,21 @@ def main():
 
     # Stack all centroids into a matrix for vectorized similarity computation
     # If no people loaded, create empty array with correct shape (0, 512)
+    print("Processing centroids...")
     centroids = np.stack([p.centroid for p in people]).astype(np.float32) if people else np.empty((0,512), np.float32)
+    print("Done.")
 
     # Initialize webcam capture (index 0 = default camera)
+    print("Initializing webcam...")
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         raise RuntimeError("Could not open webcam (index 0). Try a different index.")
+    print("Done.")
 
     # Initialize FPS calculation variables
     fps, t_prev = 0.0, time.time()
     print("")
-
-    # Display ASCII art banner
-    print("██████╗░░█████╗░██████╗░░█████╗░██╗░░██╗  ███████╗██╗░░░██╗███████╗")
-    print("██╔══██╗██╔══██╗██╔══██╗██╔══██╗██║░░██║  ██╔════╝╚██╗░██╔╝██╔════╝")
-    print("██████╔╝██║░░██║██████╔╝██║░░╚═╝███████║  █████╗░░░╚████╔╝░█████╗░░")
-    print("██╔═══╝░██║░░██║██╔══██╗██║░░██╗██╔══██║  ██╔══╝░░░░╚██╔╝░░██╔══╝░░")
-    print("██║░░░░░╚█████╔╝██║░░██║╚█████╔╝██║░░██║  ███████╗░░░██║░░░███████╗")
-    print("╚═╝░░░░░░╚════╝░╚═╝░░╚═╝░╚════╝░╚═╝░░╚═╝  ╚══════╝░░░╚═╝░░░╚══════╝")
-    print("")
+    
     print("Press 'q' to quit.")
 
     # Main processing loop
