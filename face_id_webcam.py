@@ -697,6 +697,15 @@ def main():
        - Draw bounding boxes and labels
     5. Display results and handle user input
     """
+    # Display ASCII art banner
+
+    print("██████╗░░█████╗░██████╗░░█████╗░██╗░░██╗  ███████╗██╗░░░██╗███████╗")
+    print("██╔══██╗██╔══██╗██╔══██╗██╔══██╗██║░░██║  ██╔════╝╚██╗░██╔╝██╔════╝")
+    print("██████╔╝██║░░██║██████╔╝██║░░╚═╝███████║  █████╗░░░╚████╔╝░█████╗░░")
+    print("██╔═══╝░██║░░██║██╔══██╗██║░░██╗██╔══██║  ██╔══╝░░░░╚██╔╝░░██╔══╝░░")
+    print("██║░░░░░╚█████╔╝██║░░██║╚█████╔╝██║░░██║  ███████╗░░░██║░░░███████╗")
+    print("╚═╝░░░░░░╚════╝░╚═╝░░╚═╝░╚════╝░╚═╝░░╚═╝  ╚══════╝░░░╚═╝░░░╚══════╝")
+    print("")
 
     # Initialize the face analysis model
     # "buffalo_l" is a pre-trained model that includes face detection and recognition
@@ -727,9 +736,11 @@ def main():
     print(f"[DEBUG] Person types array: {list(person_types)}")
 
     # Initialize webcam capture (index 0 = default camera)
+    print("Initializing webcam...")
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         raise RuntimeError("Could not open webcam (index 0). Try a different index.")
+    print("Done.")
 
     # Initialize FPS calculation variables, face ID counter, tracking list, and notification system
     fps, t_prev = 0.0, time.time()
@@ -739,15 +750,7 @@ def main():
     frame_count = 0  # Global frame counter for notification cooldown
 
     print("")
-
-    # Display ASCII art banner
-    print("██████╗░░█████╗░██████╗░░█████╗░██╗░░██╗  ███████╗██╗░░░██╗███████╗")
-    print("██╔══██╗██╔══██╗██╔══██╗██╔══██╗██║░░██║  ██╔════╝╚██╗░██╔╝██╔════╝")
-    print("██████╔╝██║░░██║██████╔╝██║░░╚═╝███████║  █████╗░░░╚████╔╝░█████╗░░")
-    print("██╔═══╝░██║░░██║██╔══██╗██║░░██╗██╔══██║  ██╔══╝░░░░╚██╔╝░░██╔══╝░░")
-    print("██║░░░░░╚█████╔╝██║░░██║╚█████╔╝██║░░██║  ███████╗░░░██║░░░███████╗")
-    print("╚═╝░░░░░░╚════╝░╚═╝░░╚═╝░╚════╝░╚═╝░░╚═╝  ╚══════╝░░░╚═╝░░░╚══════╝")
-    print("")
+    
     print("Press 'q' to quit.")
 
     # Main processing loop
