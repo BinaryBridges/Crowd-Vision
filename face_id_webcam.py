@@ -19,9 +19,10 @@ from insightface.app import FaceAnalysis # type: ignore  # Deep learning face an
 from enum import Enum
 
 class Status(Enum):
-    CONFIRMED = 1
-    TENTATIVE = 2
-    LOST = 3
+    CONFIRMED_KEY = 1
+    CONFIRMED_BAD = 2
+    TENTATIVE = 3
+    LOST = 4
 
 
 # --------- CONFIGURATION PARAMETERS ----------
@@ -62,7 +63,7 @@ class TrackedFace:
         bbox: Current bounding box coordinates [x1, y1, x2, y2]
         label: Recognized name or "Unknown"
         confidence: Similarity score (0-1) if recognized, 0 if unknown
-        status: Current tracking status (CONFIRMED, TENTATIVE, LOST)
+        status: Current tracking status (CONFIRMED_KEY, TENTATIVE, LOST)
         hit_count: Number of consecutive frames this face has been detected
         age: Number of frames since this face was last detected
         embedding_full: Full 512-dimensional face embedding for recognition
@@ -157,8 +158,10 @@ def get_face_color(face: TrackedFace) -> Tuple[int, int, int]:
     Returns:
         BGR color tuple
     """
-    if face.status == Status.CONFIRMED:
-        return (0, 200, 0) if face.label != "Unknown" else (0, 0, 255)  # Green for known, red for unknown
+    if face.status == Status.CONFIRMED_KEY:
+        return (0, 200, 0) if face.label != "Unknown" else (255, 0, 0)  # Green for known, blue for unknown
+    elif face.status == Status.CONFIRMED_BAD:
+        return (0, 0, 255)  # Red for confirmed bad
     elif face.status == Status.TENTATIVE:
         return (0, 255, 255)  # Yellow for tentative
     else:  # LOST
@@ -223,7 +226,7 @@ def calculate_iou(bbox1: Tuple[int, int, int, int], bbox2: Tuple[int, int, int, 
     return intersection / union if union > 0 else 0.0
 
 def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List, app: FaceAnalysis,
-                        names: np.ndarray, centroids: np.ndarray, face_id_counter: int,
+                        names: np.ndarray, centroids: np.ndarray, person_types: np.ndarray, face_id_counter: int,
                         notified_faces: Dict[str, int], frame_count: int) -> Tuple[List[TrackedFace], int]:
     """
     Update tracked faces with new detections using IoU matching
@@ -243,7 +246,7 @@ def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List,
     # Age all existing tracked faces and increment verification counters
     for face in tracked_faces:
         face.age += 1
-        if face.status == Status.CONFIRMED:
+        if face.status == Status.CONFIRMED_KEY or face.status == Status.CONFIRMED_BAD:
             face.frames_since_verification += 1
         if face.age > MAX_AGE:
             face.status = Status.LOST
@@ -283,7 +286,7 @@ def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List,
                 embedding_sim = cosine_sim(face.embedding_tracking.reshape(1, -1), tracking_emb)[0]
 
             # Combined score: prioritize embedding similarity for confirmed faces, IoU for tentative
-            if face.status == Status.CONFIRMED:
+            if face.status == Status.CONFIRMED_KEY or face.status == Status.CONFIRMED_BAD:
                 # For confirmed faces, require high embedding similarity OR very high IoU
                 if embedding_sim > 0.7 or iou > 0.7:
                     score = embedding_sim * 0.7 + iou * 0.3
@@ -323,6 +326,7 @@ def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List,
                     if best_sim >= SIM_THRESHOLD:
                         new_label = names[best_idx]
                         new_confidence = best_sim
+                        person_type = person_types[best_idx]
 
                 # Check if the identity has changed from what we initially thought
                 if best_match.label != new_label:
@@ -351,21 +355,49 @@ def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List,
 
                 # Check if face should be confirmed (only if we have enough consistent hits)
                 if best_match.hit_count >= MIN_HITS:
-                    best_match.status = Status.CONFIRMED
+                    # Determine person type and set appropriate status
+                    if best_match.label != "Unknown" and centroids.size > 0:
+                        # Find the person type from our arrays
+                        person_idx = np.where(names == best_match.label)[0]
+                        if len(person_idx) > 0:
+                            person_type = person_types[person_idx[0]]
+                            if person_type == 'key':
+                                best_match.status = Status.CONFIRMED_KEY
+                                status_text = "CONFIRMED_KEY"
+                                notification_prefix = "🔑 KEY PERSON"
+                            else:  # person_type == 'bad'
+                                best_match.status = Status.CONFIRMED_BAD
+                                status_text = "CONFIRMED_BAD"
+                                notification_prefix = "⚠️ BAD PERSON"
+                        else:
+                            # Person not found in arrays - this shouldn't happen for known people
+                            # Log this as a potential data loading issue
+                            print(f"[WARNING] Person '{best_match.label}' recognized but not found in person_types array!")
+                            print(f"[DEBUG] Available names: {list(names)}")
+                            # Default to tentative status until we can verify
+                            best_match.status = Status.TENTATIVE
+                            status_text = "TENTATIVE_UNVERIFIED"
+                            notification_prefix = "❓ UNVERIFIED"
+                    else:
+                        # Unknown person
+                        best_match.status = Status.CONFIRMED_KEY  # Default for unknown
+                        status_text = "CONFIRMED_UNKNOWN"
+                        notification_prefix = "❓ UNKNOWN PERSON"
+
                     best_match.frames_since_verification = 0  # Reset verification counter
-                    print(f"[CONFIRMED] Face ID {best_match.face_id} ({best_match.label}) after {best_match.hit_count} consistent detections")
+                    print(f"[{status_text}] Face ID {best_match.face_id} ({best_match.label}) after {best_match.hit_count} consistent detections")
 
                     # Send notification if this person hasn't been notified recently
                     person_key = best_match.label
 
                     if person_key not in notified_faces or (frame_count - notified_faces[person_key]) >= NOTIFICATION_COOLDOWN:
                         if best_match.label == "Unknown":
-                            print(f"[Notification] Unknown person detected and confirmed")
+                            print(f"[NOTIFICATION] {notification_prefix} detected and confirmed")
                         else:
-                            print(f"[Notification] {best_match.label} has been detected and confirmed")
+                            print(f"[NOTIFICATION] {notification_prefix} - {best_match.label} detected and confirmed")
                         notified_faces[person_key] = frame_count
 
-            elif best_match.status == Status.CONFIRMED:
+            elif best_match.status == Status.CONFIRMED_KEY or best_match.status == Status.CONFIRMED_BAD:
                 # For confirmed faces, only do periodic verification
                 if best_match.frames_since_verification >= VERIFICATION_INTERVAL:
                     # Time for periodic verification - check if it's still the right person
@@ -383,6 +415,7 @@ def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List,
                         if best_sim >= SIM_THRESHOLD:
                             verified_label = names[best_idx]
                             verified_confidence = best_sim
+                            verified_person_type = person_types[best_idx]
 
                     # Check if identity has changed
                     if best_match.label != verified_label:
@@ -395,7 +428,16 @@ def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List,
                         best_match.embedding = embedding
                         best_match.frames_since_verification = 0
                     else:
-                        # Identity confirmed - update confidence and reset verification counter
+                        # Identity confirmed - update confidence, status if needed, and reset verification counter
+                        if verified_label != "Unknown":
+                            # Update status based on current person type
+                            if verified_person_type == 'key' and best_match.status != Status.CONFIRMED_KEY:
+                                best_match.status = Status.CONFIRMED_KEY
+                                print(f"[STATUS UPDATE] Face ID {best_match.face_id} ({best_match.label}) -> CONFIRMED_KEY")
+                            elif verified_person_type == 'bad' and best_match.status != Status.CONFIRMED_BAD:
+                                best_match.status = Status.CONFIRMED_BAD
+                                print(f"[STATUS UPDATE] Face ID {best_match.face_id} ({best_match.label}) -> CONFIRMED_BAD")
+
                         print(f"[VERIFIED] Face ID {best_match.face_id} ({best_match.label}) - confidence: {verified_confidence:.3f}")
                         best_match.confidence = verified_confidence
                         best_match.embedding_full = embedding
@@ -475,6 +517,7 @@ def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List,
                     if best_sim >= SIM_THRESHOLD:
                         label = names[best_idx]
                         confidence = best_sim
+                        person_type = person_types[best_idx]
 
                 new_face = TrackedFace(
                     face_id=face_id_counter,
@@ -504,9 +547,9 @@ def update_tracked_faces(tracked_faces: List[TrackedFace], detected_faces: List,
     # For each name, keep only the best face (prioritize confirmed, then highest confidence)
     for name, faces_with_name in name_to_faces.items():
         if len(faces_with_name) > 1:
-            # Sort by: 1) Status (CONFIRMED first), 2) Confidence, 3) Hit count
+            # Sort by: 1) Status (CONFIRMED_KEY/BAD first), 2) Confidence, 3) Hit count
             faces_with_name.sort(key=lambda f: (
-                f.status != Status.CONFIRMED,  # False (0) for confirmed comes first
+                f.status not in [Status.CONFIRMED_KEY, Status.CONFIRMED_BAD],  # False (0) for confirmed comes first
                 -f.confidence,  # Higher confidence first
                 -f.hit_count    # Higher hit count first
             ))
@@ -567,63 +610,77 @@ def load_known_people(app: FaceAnalysis, root: str) -> List[Person]:
     Returns:
         List of Person objects with computed centroids
     """
-    people: List[Person] = []  # List to store all known people
-    total_imgs, total_used = 0, 0  # Counters for statistics
+    key_people: List[Person] = []  # List to store all known people with key access
+    bad_people: List[Person] = []  # List to store all known people who are known threats
+    total_imgs, key_faces, bad_faces = 0, 0, 0  # Counters for statistics
 
     # Check if the known faces directory exists
     if not os.path.isdir(root):
         print(f"[WARN] No '{root}' directory found. Everyone will be 'Unknown'.")
-        return people
+        return key_people, bad_people
 
     # Iterate through each person's subdirectory
-    for name in sorted(os.listdir(root)):
-        pdir = os.path.join(root, name)  # Full path to person's directory
-        if not os.path.isdir(pdir): continue  # Skip files, only process directories
+    for major_folder in sorted(os.listdir(root)):
+        major_path = os.path.join(root, major_folder)
+        if not os.path.isdir(major_path):
+            continue  # skip if there is a file
 
-        embs = []  # List to store face embeddings for this person
+        person_type = major_folder
+    
+        # nested loop for subdirectories inside major_folder
+        for name in sorted(os.listdir(major_path)):
+            pdir = os.path.join(major_path, name)
+            if os.path.isdir(pdir):
+                print(f"Subdir: {pdir}")
 
-        # Find all image files in the person's directory (jpg, jpeg, png)
-        image_patterns = [glob.glob(os.path.join(pdir, ext)) for ext in ("*.jpg", "*.jpeg", "*.png")]
-        image_paths = sorted(sum(image_patterns, []))  # Flatten and sort the list
+            embs = []  # List to store face embeddings for this person
 
-        for img_path in image_paths:
-            total_imgs += 1  # Count total images processed
+            # Find all image files in the person's directory (jpg, jpeg, png)
+            image_patterns = [glob.glob(os.path.join(pdir, ext)) for ext in ("*.jpg", "*.jpeg", "*.png")]
+            image_paths = sorted(sum(image_patterns, []))  # Flatten and sort the list
 
-            # Load the image
-            img = cv2.imread(img_path)
-            if img is None:
-                print(f"[skip] unreadable: {img_path}")
-                continue
+            for img_path in image_paths:
+                total_imgs += 1  # Count total images processed
 
-            # Detect faces in the image
-            faces = app.get(img)  # Returns list of detected faces with embeddings
-            if not faces:
-                continue  # Skip images with no detected faces
+                # Load the image
+                img = cv2.imread(img_path)
+                if img is None:
+                    print(f"[skip] unreadable: {img_path}")
+                    continue
 
-            # Select the largest face (most prominent person in the image)
-            # Face bbox format: [x1, y1, x2, y2]
-            f = max(faces, key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]))
+                # Detect faces in the image
+                faces = app.get(img)  # Returns list of detected faces with embeddings
+                if not faces:
+                    continue  # Skip images with no detected faces
 
-            # Extract the face embedding (already L2-normalized by InsightFace)
-            emb = f.normed_embedding.astype(np.float32)  # Shape: (DETECTION_VECTOR_SIZE,)
-            embs.append(emb)
-            total_used += 1  # Count faces actually used
+                # Select the largest face (most prominent person in the image)
+                # Face bbox format: [x1, y1, x2, y2]
+                f = max(faces, key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]))
 
-        # If we found at least one face for this person
-        if embs:
-            # Stack all embeddings and compute the average (centroid)
-            arr = np.stack(embs).astype(np.float32)  # Shape: (num_images, DETECTION_VECTOR_SIZE)
-            centroid = l2norm(arr.mean(axis=0))  # Average and re-normalize
+                # Extract the face embedding (already L2-normalized by InsightFace)
+                emb = f.normed_embedding.astype(np.float32)  # Shape: (DETECTION_VECTOR_SIZE,)
+                embs.append(emb)
 
-            # Create Person object and add to list
-            people.append(Person(name=name, centroid=centroid, num_refs=len(embs)))
-            print(f"[loaded] {name}: {len(embs)} image(s)")
-        else:
-            print(f"[warn] no faces found for '{name}'")
+            # If we found at least one face for this person
+            if embs:
+                # Stack all embeddings and compute the average (centroid)
+                arr = np.stack(embs).astype(np.float32)  # Shape: (num_images, DETECTION_VECTOR_SIZE)
+                centroid = l2norm(arr.mean(axis=0))  # Average and re-normalize
+
+                # Create Person object and add to list
+                if(person_type == "key"):
+                    key_people.append(Person(name=name, centroid=centroid, num_refs=len(embs)))
+                    key_faces += len(embs)
+                elif(person_type == "bad"):
+                    bad_people.append(Person(name=name, centroid=centroid, num_refs=len(embs)))
+                    bad_faces += len(embs)
+                print(f"[loaded] [{person_type}] - {name}: {len(embs)} image(s)")
+            else:
+                print(f"[warn] no faces found for [{person_type}] - '{name}'")
 
     # Print summary statistics
-    print(f"[summary] persons: {len(people)}, images scanned: {total_imgs}, faces used: {total_used}")
-    return people
+    print(f"[summary] key faces: {len(key_people)}, bad people: {len(bad_people)}, images scanned: {total_imgs}, key faces used: {key_faces}, bad faces: {bad_faces}")
+    return key_people, bad_people
 
 def main():
     """
@@ -648,12 +705,26 @@ def main():
     app.prepare(ctx_id=-1, det_size=(640, 640))  # det_size affects detection accuracy vs speed
 
     # Load all known people and prepare data structures for fast lookup
-    people = load_known_people(app, KNOWN_DIR)
-    names = np.array([p.name for p in people], dtype=object)  # Array of names for indexing
+    key_people, bad_people = load_known_people(app, KNOWN_DIR)
+
+    # Combine all people for unified processing while maintaining type information
+    all_people = key_people + bad_people
+
+    # Create arrays for fast vectorized lookup
+    names = np.array([p.name for p in all_people], dtype=object)  # Array of names for indexing
+    person_types = np.array(['key'] * len(key_people) + ['bad'] * len(bad_people), dtype=object)  # Track person types
 
     # Stack all centroids into a matrix for vectorized similarity computation
     # If no people loaded, create empty array with correct shape (0, DETECTION_VECTOR_SIZE)
-    centroids = np.stack([p.centroid for p in people]).astype(np.float32) if people else np.empty((0,DETECTION_VECTOR_SIZE), np.float32)
+    centroids = np.stack([p.centroid for p in all_people]).astype(np.float32) if all_people else np.empty((0,DETECTION_VECTOR_SIZE), np.float32)
+
+    # Print summary of loaded people
+    print(f"[DATA STRUCTURES] Loaded {len(key_people)} key people, {len(bad_people)} bad people")
+    print(f"[DATA STRUCTURES] Combined arrays: {len(names)} names, {len(person_types)} types, {centroids.shape[0]} centroids")
+    print(f"[DEBUG] Key people names: {[p.name for p in key_people]}")
+    print(f"[DEBUG] Bad people names: {[p.name for p in bad_people]}")
+    print(f"[DEBUG] Names array: {list(names)}")
+    print(f"[DEBUG] Person types array: {list(person_types)}")
 
     # Initialize webcam capture (index 0 = default camera)
     cap = cv2.VideoCapture(0)
@@ -694,7 +765,7 @@ def main():
 
         # Update tracked faces with new detections and handle notifications
         tracked_faces, face_id_counter = update_tracked_faces(
-            tracked_faces, faces, app, names, centroids, face_id_counter, notified_faces, frame_count
+            tracked_faces, faces, app, names, centroids, person_types, face_id_counter, notified_faces, frame_count
         )
 
         # Clean up old notification entries periodically (every 100 frames)
