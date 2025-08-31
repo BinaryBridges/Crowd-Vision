@@ -1,0 +1,52 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+preview = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    #### modules
+    "ANN", "COM", "C90", "DJ", "EXE", "T10", "TID",
+
+    #### specific rules (docstrings, style, etc.)
+    "D100","D101","D102","D103","D104","D105","D106","D107",
+    "D200","D205","D212","D400","D401","D415",
+    "D203",        # prefer D211 behavior
+    "DOC",         # disable pydoclint family
+    "CPY001",      # no copyright header required
+    "RUF002",      # allow ×, …, etc. in docstrings/comments
+
+    "E402","E501",
+    "TRY003",
+    "TD002","TD003",
+    "FIX002",
+
+    # Dev-time prints are fine.
+    "T201",
+
+    # Complexity/size relaxations
+    "PLR0914",     # too many local variables
+    "PLR0915",     # too many statements
+
+    # Allow f-strings directly in exceptions.
+    "EM102",
+
+    # Pathlib preference checks (disabled)
+    "PTH118",
+    "PTH207",
+    "PTH208"
+]
+
+[tool.ruff.lint.pylint]
+# Loosen argument-count rules.
+max-args = 10
+max-positional-args = 10
+
+[tool.ruff.format]
+quote-style = "preserve"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+docstring-code-line-length = 79

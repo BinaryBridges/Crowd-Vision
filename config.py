@@ -1,8 +1,8 @@
 # ---- Data / Model ----
 KNOWN_DIR = "known_faces"  # Root folder holding category/name subfolders
-DETECTION_MODEL_NAME = "buffalo_l"  # InsightFace model suite name
+DETECTION_MODEL_NAME = "buffalo_s"  # InsightFace model suite name
 CAMERA_INDEX = 0  # Default webcam index
-DET_SIZE = (640, 640)  # Detector input size
+DET_SIZE = (320, 320)  # Detector input size
 
 # ---- Categories ----
 # Add a new category by adding a string here (e.g., "vip"). Non-"bad" categories
@@ -21,9 +21,7 @@ NOTIFY_COOLDOWN_FRAMES = 100  # Frames to wait before re-notifying same person
 ASSOC_MIN_SCORE = 0.4  # Minimum association score to pair a detection with a track
 CONF_STRONG_SIM = 0.7  # "Strong" sim/IoU threshold for confirmed tracks
 TENTATIVE_MIN_IOU = 0.3  # Minimum IoU to consider a tentative match
-TRACK_DRIFT_MIN_SIM = (
-    0.6  # Reduced-embedding similarity below which we reset hits (drift)
-)
+TRACK_DRIFT_MIN_SIM = 0.6  # Reduced-embedding similarity below which we reset hits (drift)
 REACTIVATE_MIN_SIM = 0.75  # Full-embedding similarity to reactivate a LOST track
 
 # ---- Embedding settings ----

@@ -1,42 +1,46 @@
+from contextlib import suppress
+
 import cv2
-from insightface.app import FaceAnalysis
 import numpy as np
+from insightface.app import FaceAnalysis
 
 import config
 from data_loader import load_reference_identities
 from tracking import track_and_update_faces
-from utils import draw_tracked_faces, expire_notifications, FPSMeter, draw_fps_label
+from utils import FPSMeter, draw_fps_label, draw_tracked_faces, expire_notifications
 
 
 def main():
     print(config.BANNER)
     print("\nInitializing face analysis model...")
-    app = FaceAnalysis(name=config.DETECTION_MODEL_NAME)
+    app = FaceAnalysis(
+        name=config.DETECTION_MODEL_NAME,
+        allowed_modules=["detection", "recognition"],  # skip age/gender/3D landmarks
+    )
     app.prepare(ctx_id=-1, det_size=config.DET_SIZE)
     print("Model initialized.\n")
 
-    # Load known identities
-    key_people, bad_people = load_reference_identities(app, config.KNOWN_DIR)
-    all_people = key_people + bad_people
+    # Load known identities (dynamic categories)
+    people, categories = load_reference_identities(app, config.KNOWN_DIR)
 
-    known_names = np.array([p.name for p in all_people], dtype=object)
-    known_categories = np.array(
-        (["key"] * len(key_people)) + (["bad"] * len(bad_people)),
-        dtype=object,
-    )
+    known_names = np.array([p.name for p in people], dtype=object)
+    known_categories = np.array(categories, dtype=object)
     known_centroids = (
-        np.stack([p.centroid for p in all_people]).astype(np.float32)
-        if all_people
+        np.stack([p.centroid for p in people]).astype(np.float32)
+        if people
         else np.empty((0, config.DETECTION_VECTOR_SIZE), np.float32)
     )
 
-    print(f"[DATA STRUCTURES] Loaded {len(key_people)} key, {len(bad_people)} bad")
+    # Diagnostics
+    cat_counts = {}
+    for c in known_categories:
+        cat_counts[c] = cat_counts.get(c, 0) + 1
+    cats_summary = ", ".join(f"{c}:{n}" for c, n in sorted(cat_counts.items())) or "none"
+    print(f"[DATA STRUCTURES] Loaded people: {len(people)} ({cats_summary})")
     print(
         f"[DATA STRUCTURES] Names: {len(known_names)}, Categories: {len(known_categories)}, "
         f"Centroids: {known_centroids.shape[0]}"
     )
-    print(f"[DEBUG] Key: {[p.name for p in key_people]}")
-    print(f"[DEBUG] Bad: {[p.name for p in bad_people]}")
     print(f"[DEBUG] Names array: {list(known_names)}")
     print(f"[DEBUG] Categories array: {list(known_categories)}\n")
 
@@ -45,6 +49,9 @@ def main():
     cap = None
     try:
         cap = cv2.VideoCapture(config.CAMERA_INDEX)
+        # Reasonable default capture resolution; the detector runs at DET_SIZE internally.
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open webcam (index {config.CAMERA_INDEX}).")
         print("Done.\nPress 'q' to quit.\n")
@@ -91,18 +98,12 @@ def main():
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
-    except KeyboardInterrupt:
-        pass
     finally:
         if cap is not None:
-            try:
+            with suppress(cv2.error):
                 cap.release()
-            except Exception:
-                pass
-        try:
+        with suppress(cv2.error):
             cv2.destroyAllWindows()
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":

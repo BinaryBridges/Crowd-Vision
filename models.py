@@ -20,6 +20,7 @@ class Person:
     name: str
     centroid: np.ndarray  # L2-normalized 512-d embedding
     num_refs: int
+    category: str = "key"
 
 
 @dataclass

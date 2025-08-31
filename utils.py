@@ -1,5 +1,5 @@
 from time import perf_counter
-from typing import Dict
+
 import cv2
 import numpy as np
 
@@ -28,9 +28,7 @@ def reduce_embedding_for_tracking(full_embedding: np.ndarray) -> np.ndarray:
 # Drawing Helpers
 
 
-def draw_text_label(
-    img: np.ndarray, text: str, x: int, y: int, scale: float = 0.6, thickness: int = 2
-):
+def draw_text_label(img: np.ndarray, text: str, x: int, y: int, scale: float = 0.6, thickness: int = 2):
     (w, h), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
     cv2.rectangle(img, (x, y - h - 6), (x + w + 6, y + 4), (0, 0, 0), -1)
     cv2.putText(
@@ -46,9 +44,7 @@ def draw_text_label(
 
 def color_for_face_status(face: TrackedFace) -> tuple[int, int, int]:
     if face.status == Status.CONFIRMED_KEY:
-        return (
-            (0, 200, 0) if face.label != "Unknown" else (255, 0, 0)
-        )  # green or blue for unknown confirmed
+        return (0, 200, 0) if face.label != "Unknown" else (255, 0, 0)  # green or blue for unknown confirmed
     if face.status == Status.CONFIRMED_BAD:
         return (0, 0, 255)  # red
     if face.status == Status.TENTATIVE:
@@ -71,7 +67,7 @@ def draw_tracked_faces(frame: np.ndarray, tracked: list[TrackedFace]):
         draw_text_label(frame, label, x1, y1)
 
 
-def expire_notifications(notified: Dict[str, int], current_frame: int):
+def expire_notifications(notified: dict[str, int], current_frame: int):
     """
     Remove notification entries whose cooldown has fully elapsed
     relative to the current frame.
@@ -88,9 +84,7 @@ class FPSMeter:
     Call tick() once per loop; read .fps for smoothed FPS and .inst_fps for instantaneous FPS.
     """
 
-    def __init__(
-        self, alpha: float = config.FPS_ALPHA, max_dt: float = config.FPS_MAX_DT_CLAMP
-    ):
+    def __init__(self, alpha: float = config.FPS_ALPHA, max_dt: float = config.FPS_MAX_DT_CLAMP):
         self.alpha = float(alpha)
         self.max_dt = float(max_dt)
         self._last_t = perf_counter()
