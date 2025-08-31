@@ -1,10 +1,13 @@
-import time, cv2, numpy as np
+import time
+
+import cv2
 from insightface.app import FaceAnalysis
+import numpy as np
 
 import config
 from data_loader import load_reference_identities
-from utils import draw_text_label, draw_tracked_faces, prune_old_notifications
 from tracking import track_and_update_faces
+from utils import draw_text_label, draw_tracked_faces, prune_old_notifications
 
 
 def main():
@@ -19,16 +22,18 @@ def main():
     all_people = key_people + bad_people
     known_names = np.array([p.name for p in all_people], dtype=object)
     known_categories = np.array(
-        (["key"] * len(key_people)) + (["bad"] * len(bad_people)),
-        dtype=object
+        (["key"] * len(key_people)) + (["bad"] * len(bad_people)), dtype=object
     )
     known_centroids = (
         np.stack([p.centroid for p in all_people]).astype(np.float32)
-        if all_people else np.empty((0, config.DETECTION_VECTOR_SIZE), np.float32)
+        if all_people
+        else np.empty((0, config.DETECTION_VECTOR_SIZE), np.float32)
     )
 
     print(f"[DATA STRUCTURES] Loaded {len(key_people)} key, {len(bad_people)} bad")
-    print(f"[DATA STRUCTURES] Names: {len(known_names)}, Categories: {len(known_categories)}, Centroids: {known_centroids.shape[0]}")
+    print(
+        f"[DATA STRUCTURES] Names: {len(known_names)}, Categories: {len(known_categories)}, Centroids: {known_centroids.shape[0]}"
+    )
     print(f"[DEBUG] Key: {[p.name for p in key_people]}")
     print(f"[DEBUG] Bad: {[p.name for p in bad_people]}")
     print(f"[DEBUG] Names array: {list(known_names)}")
@@ -64,7 +69,7 @@ def main():
             known_categories,
             face_id_counter,
             notified,
-            frame_idx
+            frame_idx,
         )
 
         if frame_idx % 100 == 0:
@@ -80,7 +85,7 @@ def main():
             draw_text_label(frame, f"{fps:.1f} FPS", 10, 30)
 
         cv2.imshow(config.WINDOW_TITLE, frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     cap.release()

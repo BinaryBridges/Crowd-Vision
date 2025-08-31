@@ -29,3 +29,7 @@ To add a new category (e.g., `vip`):
 
 3. Start project
 `python main.py`
+
+### Formatting and linting
+ruff format .
+ruff check --fix .
