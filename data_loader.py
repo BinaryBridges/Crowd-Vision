@@ -67,9 +67,9 @@ def load_reference_identities(app, root: str) -> tuple[list[Person], list[str]]:
         if not pathlib.Path(category_path).is_dir() or category.startswith("."):
             continue
 
-        # Optional: validate against config.PERSON_CATEGORIES
-        if hasattr(config, "PERSON_CATEGORIES") and category not in config.PERSON_CATEGORIES:
-            print(f"[warn] category '{category}' not in config.PERSON_CATEGORIES")
+        # Validate folder category against config.CATEGORY_META (name + color required)
+        if not hasattr(config, "CATEGORY_META") or category not in config.CATEGORY_META:
+            print(f"[warn] category '{category}' is not defined in config.CATEGORY_META (add a name & color to use it)")
 
         for person_name in sorted(os.listdir(category_path)):
             person_path = os.path.join(category_path, person_name)
@@ -94,7 +94,7 @@ def load_reference_identities(app, root: str) -> tuple[list[Person], list[str]]:
 
             if embs:
                 centroid = normalize_l2(np.stack(embs).astype(np.float32).mean(axis=0))
-                people.append(Person(name=person_name, centroid=centroid, num_refs=len(embs)))
+                people.append(Person(name=person_name, centroid=centroid, num_refs=len(embs), category=category))
                 categories.append(category)
                 used_imgs += len(embs)
                 per_category_counts[category] = per_category_counts.get(category, 0) + 1

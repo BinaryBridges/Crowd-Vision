@@ -1,6 +1,19 @@
+import os
+import warnings
 from contextlib import suppress
 
+os.environ["INSIGHTFACE_ONNX_PROVIDERS"] = "CPUExecutionProvider"
+os.environ["ORT_LOG_LEVEL"] = "ERROR"
+warnings.filterwarnings(
+    "ignore",
+    message="Specified provider 'CUDAExecutionProvider' is not in available provider names.*",
+    category=UserWarning,
+)
+
 import cv2
+
+cv2.setNumThreads(1)
+
 import numpy as np
 from insightface.app import FaceAnalysis
 
@@ -16,13 +29,12 @@ def main():
     app = FaceAnalysis(
         name=config.DETECTION_MODEL_NAME,
         allowed_modules=["detection", "recognition"],  # skip age/gender/3D landmarks
+        providers=["CPUExecutionProvider"],  # pin provider explicitly
     )
     app.prepare(ctx_id=-1, det_size=config.DET_SIZE)
     print("Model initialized.\n")
 
-    # Load known identities (dynamic categories)
     people, categories = load_reference_identities(app, config.KNOWN_DIR)
-
     known_names = np.array([p.name for p in people], dtype=object)
     known_categories = np.array(categories, dtype=object)
     known_centroids = (
@@ -49,20 +61,16 @@ def main():
     cap = None
     try:
         cap = cv2.VideoCapture(config.CAMERA_INDEX)
-        # Reasonable default capture resolution; the detector runs at DET_SIZE internally.
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open webcam (index {config.CAMERA_INDEX}).")
         print("Done.\nPress 'q' to quit.\n")
 
-        # Tracking state
         face_id_counter = 0
         tracked = []
         notified = {}
         frame_idx = 0
-
-        # FPS meter
         fps_meter = FPSMeter()
 
         while True:
@@ -72,8 +80,6 @@ def main():
                 break
 
             faces = app.get(frame)
-
-            # Per-person notification expiry based on the configured cooldown
             expire_notifications(notified, frame_idx)
 
             tracked, face_id_counter = track_and_update_faces(
@@ -89,7 +95,6 @@ def main():
 
             draw_tracked_faces(frame, tracked)
 
-            # FPS update + label
             fps_meter.tick()
             if config.SHOW_FPS:
                 draw_fps_label(frame, fps_meter, 10, 30)

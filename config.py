@@ -5,9 +5,14 @@ CAMERA_INDEX = 0  # Default webcam index
 DET_SIZE = (320, 320)  # Detector input size
 
 # ---- Categories ----
-# Add a new category by adding a string here (e.g., "vip"). Non-"bad" categories
-# will be treated as "allowed" (green) by default.
-PERSON_CATEGORIES = ["key", "bad"]
+# Define each category (folder name) with a display label and BGR color for drawing.
+# To add a new role, add an entry here AND a folder under KNOWN_DIR with the same key.
+CATEGORY_META = {
+    "key": {"label": "Keyholder", "color": (0, 200, 0)},
+    "bad": {"label": "Watchlist", "color": (0, 0, 255)},
+    "friend": {"label": "Friend", "color": (60, 160, 255)},
+}
+PERSON_CATEGORIES = list(CATEGORY_META.keys())
 
 # ---- Thresholds & Hyperparameters ----
 SIM_THRESHOLD = 0.38  # Cosine similarity threshold for recognition (0-1)

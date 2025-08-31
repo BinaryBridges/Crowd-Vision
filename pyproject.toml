@@ -12,10 +12,10 @@ ignore = [
     #### specific rules (docstrings, style, etc.)
     "D100","D101","D102","D103","D104","D105","D106","D107",
     "D200","D205","D212","D400","D401","D415",
-    "D203",        # prefer D211 behavior
-    "DOC",         # disable pydoclint family
-    "CPY001",      # no copyright header required
-    "RUF002",      # allow ×, …, etc. in docstrings/comments
+    "D203",
+    "DOC",
+    "CPY001",
+    "RUF002",
 
     "E402","E501",
     "TRY003",
@@ -26,8 +26,9 @@ ignore = [
     "T201",
 
     # Complexity/size relaxations
-    "PLR0914",     # too many local variables
-    "PLR0915",     # too many statements
+    "PLR0914",
+    "PLR0915",
+    "PLR2004",
 
     # Allow f-strings directly in exceptions.
     "EM102",

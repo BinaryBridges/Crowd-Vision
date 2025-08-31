@@ -15,9 +15,9 @@ def box_iou(b1: tuple[int, int, int, int], b2: tuple[int, int, int, int]) -> flo
     x2i, y2i = min(x2_1, x2_2), min(y2_1, y2_2)
     if x2i <= x1i or y2i <= y1i:
         return 0.0
-    inter = (x2i - x1i) * (y2i - y1i)
-    a1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-    a2 = (x2_2 - x1_2) * (y2_2 - y1_2)
+    inter = float((x2i - x1i) * (y2i - y1i))
+    a1 = float((x2_1 - x1_1) * (y2_1 - y1_1))
+    a2 = float((x2_2 - x1_2) * (y2_2 - y1_2))
     union = a1 + a2 - inter
     return inter / union if union > 0 else 0.0
 
@@ -44,8 +44,18 @@ def _valid_detections(
     for f in detected_faces:
         x1, y1, x2, y2 = map(int, f.bbox)
         if (x2 - x1) >= config.MIN_FACE_SIZE and (y2 - y1) >= config.MIN_FACE_SIZE:
+            out.append(((x1, y1), (x2, y2), f))
+        else:
             out.append(((x1, y1, x2, y2), f))
-    return out
+    # Normalize to (bbox, f)
+    normed: list[tuple[tuple[int, int, int, int], object]] = []
+    for item in out:
+        if len(item[0]) == 2:
+            (x1, y1), (x2, y2), f = item
+            normed.append(((x1, y1, x2, y2), f))
+        else:
+            normed.append(item)
+    return normed
 
 
 def _category_to_status(category: str | None) -> Status:
@@ -66,7 +76,7 @@ def _recognize(
     idx = int(np.argmax(sims))
     best = float(sims[idx])
     if best >= config.SIM_THRESHOLD:
-        return names[idx], best, categories[idx]
+        return names[idx], best, (categories[idx] if len(categories) > idx else None)
     return "Unknown", 0.0, None
 
 
@@ -108,30 +118,33 @@ def _confirm_if_ready(
         return
 
     if t.label != "Unknown" and known_centroids.size > 0:
-        # Look up category for this label if present
         idxs = np.where(known_names == t.label)[0]
         if len(idxs) > 0:
-            cat = known_categories[idxs[0]]
-            t.status = _category_to_status(str(cat))
+            cat = str(known_categories[idxs[0]])
+            t.category = cat
+            t.status = _category_to_status(cat)
             prefix = "🔑 KEY PERSON" if t.status == Status.CONFIRMED_KEY else "⚠️ BAD PERSON"
         else:
-            print(f"[WARNING] Person '{t.label}' recognized but not found in arrays.")
-            t.status = Status.TENTATIVE
-            prefix = "❓ UNVERIFIED"
+            t.category = None
+            t.status = Status.CONFIRMED_KEY
+            prefix = "✅ PERSON"
     else:
+        t.category = None
         t.status = Status.CONFIRMED_KEY
-        prefix = "❓ UNKNOWN PERSON"
+        prefix = "✅ UNKNOWN"
 
-    t.frames_since_verification = 0
-    status_text = "CONFIRMED_UNKNOWN" if t.label == "Unknown" else t.status.name
-    print(f"[{status_text}] Face ID {t.face_id} ({t.label}) after {t.hit_count} hits")
+    _notify_once(t, notified, frame_index, prefix=prefix)
 
-    key = t.label
+
+def _notify_once(t: TrackedFace, notified: dict[str, int], frame_index: int, prefix: str) -> None:
+    """Throttle notifications using NOTIFY_COOLDOWN_FRAMES."""
+    key = f"{t.label}:{getattr(t, 'category', None)}:{t.status.name}"
     if key not in notified or (frame_index - notified[key]) >= config.NOTIFY_COOLDOWN_FRAMES:
         if t.label == "Unknown":
             print(f"[NOTIFICATION] {prefix} detected and confirmed")
         else:
-            print(f"[NOTIFICATION] {prefix} - {t.label} detected and confirmed")
+            role_txt = f" [{getattr(t, 'category', None)}]" if getattr(t, "category", None) else ""
+            print(f"[NOTIFICATION] {prefix} - {t.label}{role_txt} detected and confirmed")
         notified[key] = frame_index
 
 
@@ -145,7 +158,7 @@ def _update_tentative_track(
     frame_index: int,
 ) -> None:
     """Update a TENTATIVE track with fresh recognition + drift check; confirm if ready."""
-    new_label, new_conf, _ = _recognize(known_centroids, known_names, known_categories, emb)
+    new_label, new_conf, new_cat = _recognize(known_centroids, known_names, known_categories, emb)
 
     if t.label != new_label:
         print(f"[IDENTITY CHANGED] Face ID {t.face_id}: {t.label} -> {new_label} (confidence: {new_conf:.3f})")
@@ -154,19 +167,28 @@ def _update_tentative_track(
         t.confidence = new_conf
         t.embedding_full = emb
         t.embedding_tracking = reduce_embedding_for_tracking(emb)
+        t.category = new_cat if new_label != "Unknown" else None
     else:
         # Check drift on reduced embeddings
         if t.embedding_tracking is not None:
-            reduced_now = reduce_embedding_for_tracking(emb)
-            sim = float(cosine_similarity(t.embedding_tracking.reshape(1, -1), reduced_now)[0])
+            emb_reduced = reduce_embedding_for_tracking(emb)
+            sim = float(cosine_similarity(t.embedding_tracking.reshape(1, -1), emb_reduced)[0])
             if sim < config.TRACK_DRIFT_MIN_SIM:
-                print(f"[EMBEDDING DRIFT] Face ID {t.face_id} ({t.label}): tracking similarity {sim:.3f} - resetting")
+                # Reset tentative if drifted too far
+                print(f"[DRIFT] Face ID {t.face_id} drifted (sim={sim:.3f}) -> resetting tentative hits")
                 t.hit_count = 1
-        t.label = new_label
-        t.confidence = new_conf
-        t.embedding_full = emb
-        t.embedding_tracking = reduce_embedding_for_tracking(emb)
+                t.embedding_tracking = emb_reduced
+        else:
+            t.embedding_tracking = reduce_embedding_for_tracking(emb)
 
+        t.confidence = max(t.confidence, new_conf)
+        if new_label != "Unknown":
+            t.category = new_cat
+
+        # Accumulate evidence
+        t.hit_count += 1
+
+    # Confirm if enough evidence accumulated
     _confirm_if_ready(t, known_centroids, known_names, known_categories, notified, frame_index)
 
 
@@ -188,19 +210,21 @@ def _update_confirmed_track(
         t.label = v_label
         t.confidence = v_conf
         t.embedding_full = emb
-        t.embedding_tracking = reduce_embedding_for_tracking(emb)  # ensure tracking vector is refreshed
+        t.embedding_tracking = reduce_embedding_for_tracking(emb)
         t.frames_since_verification = 0
+        t.category = v_cat if v_label != "Unknown" else None
         return
 
     # Same identity: update status if category says so and refresh embeddings
-    if v_label != "Unknown" and v_cat is not None:
-        new_status = _category_to_status(str(v_cat))
-        if new_status != t.status:
-            t.status = new_status
-            print(f"[STATUS UPDATE] Face ID {t.face_id} ({t.label}) -> {t.status.name}")
+    if v_label != "Unknown":
+        t.category = v_cat
+        if v_cat is not None:
+            new_status = _category_to_status(str(v_cat))
+            if new_status != t.status:
+                t.status = new_status
+                print(f"[STATUS UPDATE] Face ID {t.face_id} ({t.label}) -> {t.status.name}")
 
-    print(f"[VERIFIED] Face ID {t.face_id} ({t.label}) - confidence: {v_conf:.3f}")
-    t.confidence = v_conf
+    print(f"[VERIFIED] Face ID {t.face_id} ({t.label}) stays confirmed; refreshing embeddings")
     t.embedding_full = emb
     t.embedding_tracking = reduce_embedding_for_tracking(emb)
     t.frames_since_verification = 0
@@ -228,43 +252,36 @@ def _reactivate_or_create_track(
             best_track = t
 
     if best_track and best_track.status == Status.LOST:
-        # Reactivate
+        r_label, r_conf, r_cat = _recognize(known_centroids, known_names, known_categories, emb)
         best_track.bbox = bbox
         best_track.age = 0
         best_track.hit_count = 1
         best_track.status = Status.TENTATIVE
+        best_track.label = r_label
+        best_track.confidence = r_conf
         best_track.embedding_full = emb
         best_track.embedding_tracking = reduce_embedding_for_tracking(emb)
         best_track.frames_since_verification = 0
-
-        label, conf, _ = _recognize(known_centroids, known_names, known_categories, emb)
-        best_track.label = label
-        best_track.confidence = conf
-        print(f"[REACTIVATED] Face ID {best_track.face_id} ({label}) - similarity: {best_sim:.3f}")
-        return face_id_counter
-
-    if best_track:
-        print(
-            f"[DUPLICATE PREVENTED] Skipping detection - already tracked as ID {best_track.face_id} ({best_track.label}) - similarity: {best_sim:.3f}"
-        )
+        best_track.category = r_cat if r_label != "Unknown" else None
+        print(f"[REACTIVATED] Face ID {best_track.face_id} as '{best_track.label}' (sim={best_sim:.3f})")
         return face_id_counter
 
     # New track
-    label, conf, _ = _recognize(known_centroids, known_names, known_categories, emb)
-    tracked.append(
-        TrackedFace(
-            face_id=face_id_counter,
-            bbox=bbox,
-            label=label,
-            confidence=conf,
-            status=Status.TENTATIVE,
-            hit_count=1,
-            age=0,
-            embedding_full=emb,
-            embedding_tracking=reduce_embedding_for_tracking(emb),
-            frames_since_verification=0,
-        )
+    label, conf, cat = _recognize(known_centroids, known_names, known_categories, emb)
+    new_face = TrackedFace(
+        face_id=face_id_counter,
+        bbox=bbox,
+        label=label,
+        confidence=conf,
+        status=Status.TENTATIVE,
+        hit_count=1,
+        age=0,
+        embedding_full=emb,
+        embedding_tracking=reduce_embedding_for_tracking(emb),
+        frames_since_verification=0,
     )
+    new_face.category = cat if label != "Unknown" else None
+    tracked.append(new_face)
     print(f"[NEW FACE] ID {face_id_counter} ({label}) - confidence: {conf:.3f}")
     return face_id_counter + 1
 
@@ -279,18 +296,22 @@ def _enforce_one_box_per_identity(tracked: list[TrackedFace]) -> None:
     for faces in by_name.values():
         if len(faces) <= 1:
             continue
+        # Rank: confirmed > higher confidence > more hits > younger age (prefer fresh)
         faces.sort(
-            key=lambda f: (
-                f.status not in {Status.CONFIRMED_KEY, Status.CONFIRMED_BAD},
-                -f.confidence,
-                -f.hit_count,
-            )
+            key=lambda x: (
+                x.status in {Status.CONFIRMED_KEY, Status.CONFIRMED_BAD},
+                x.confidence,
+                x.hit_count,
+                -x.age,
+            ),
+            reverse=True,
         )
-        keep = faces[0]
-        for f in faces[1:]:
-            f.status = Status.LOST
-            f.age = config.MAX_AGE_BEFORE_LOST + 1
-            print(f"[DUPLICATE REMOVED] Face ID {f.face_id} ({f.label}) removed - keeping ID {keep.face_id}")
+        best = faces[0]
+        for other in faces[1:]:
+            if other is best:
+                continue
+            other.status = Status.LOST
+            print(f"[DEDUP] Keeping Face ID {best.face_id} for '{best.label}', dropping Face ID {other.face_id}")
 
 
 def _purge_stale_lost(tracked: list[TrackedFace]) -> list[TrackedFace]:
@@ -331,17 +352,19 @@ def track_and_update_faces(
             if t.face_id in used_track_ids or t.status == Status.LOST:
                 continue
             score = _best_match_score(t, bbox, emb)
-            if score > best_score and score > config.ASSOC_MIN_SCORE:
-                best_score = score
-                best_track = t
+            if score > best_score:
+                best_score, best_track = score, t
 
-        if best_track is None:
-            continue
+        if best_track is None or best_score < config.ASSOC_MIN_SCORE:
+            continue  # will try to reactivate/create later
 
-        # Update matched track with this observation
+        # Claim the detection for this track
+        matched_det_idxs.add(det_idx)
+        used_track_ids.add(best_track.face_id)
+
+        # Update track geometry & age reset
         best_track.bbox = bbox
         best_track.age = 0
-        best_track.hit_count += 1
 
         if best_track.status == Status.TENTATIVE:
             _update_tentative_track(
@@ -353,13 +376,22 @@ def track_and_update_faces(
                 notified,
                 frame_index,
             )
-        elif best_track.frames_since_verification >= config.PERIODIC_VERIFY_EVERY:
-            _update_confirmed_track(best_track, emb, known_centroids, known_names, known_categories)
+        elif best_track.status in {Status.CONFIRMED_KEY, Status.CONFIRMED_BAD}:
+            # periodic re-verify
+            if best_track.frames_since_verification >= config.PERIODIC_VERIFY_EVERY:
+                _update_confirmed_track(
+                    best_track,
+                    emb,
+                    known_centroids,
+                    known_names,
+                    known_categories,
+                )
+            else:
+                # Light refresh
+                best_track.embedding_tracking = reduce_embedding_for_tracking(emb)
+        # LOST is handled by reactivation path
 
-        matched_det_idxs.add(det_idx)
-        used_track_ids.add(best_track.face_id)
-
-    # 4) Handle unmatched detections: reactivate a LOST track or create a new one
+    # 4) For any unassociated detections: try to reactivate or create tracks
     for det_idx, (bbox, df) in enumerate(det_items):
         if det_idx in matched_det_idxs:
             continue
