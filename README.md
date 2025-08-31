@@ -28,7 +28,7 @@ To add a new category (e.g., `vip`):
 `pip install -r requirements.txt`
 
 for developer
-pip install -r requirements-dev.txt
+'pip install -r requirements-dev.txt'
 
 3. Start project
 `python main.py`
