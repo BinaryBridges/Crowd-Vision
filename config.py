@@ -1,13 +1,18 @@
 # ---- Data / Model ----
 KNOWN_DIR = "known_faces"  # Root folder holding category/name subfolders
-DETECTION_MODEL_NAME = "buffalo_l"  # InsightFace model suite name
+DETECTION_MODEL_NAME = "buffalo_s"  # InsightFace model suite name
 CAMERA_INDEX = 0  # Default webcam index
-DET_SIZE = (640, 640)  # Detector input size
+DET_SIZE = (320, 320)  # Detector input size
 
 # ---- Categories ----
-# Add a new category by adding a string here (e.g., "vip"). Non-"bad" categories
-# will be treated as "allowed" (green) by default.
-PERSON_CATEGORIES = ["key", "bad"]
+# Define each category (folder name) with a display label and BGR color for drawing.
+# To add a new role, add an entry here AND a folder under KNOWN_DIR with the same key.
+CATEGORY_META = {
+    "key": {"label": "Keyholder", "color": (0, 200, 0)},
+    "bad": {"label": "Watchlist", "color": (0, 0, 255)},
+    "friend": {"label": "Friend", "color": (60, 160, 255)},
+}
+PERSON_CATEGORIES = list(CATEGORY_META.keys())
 
 # ---- Thresholds & Hyperparameters ----
 SIM_THRESHOLD = 0.38  # Cosine similarity threshold for recognition (0-1)
@@ -21,9 +26,7 @@ NOTIFY_COOLDOWN_FRAMES = 100  # Frames to wait before re-notifying same person
 ASSOC_MIN_SCORE = 0.4  # Minimum association score to pair a detection with a track
 CONF_STRONG_SIM = 0.7  # "Strong" sim/IoU threshold for confirmed tracks
 TENTATIVE_MIN_IOU = 0.3  # Minimum IoU to consider a tentative match
-TRACK_DRIFT_MIN_SIM = (
-    0.6  # Reduced-embedding similarity below which we reset hits (drift)
-)
+TRACK_DRIFT_MIN_SIM = 0.6  # Reduced-embedding similarity below which we reset hits (drift)
 REACTIVATE_MIN_SIM = 0.75  # Full-embedding similarity to reactivate a LOST track
 
 # ---- Embedding settings ----

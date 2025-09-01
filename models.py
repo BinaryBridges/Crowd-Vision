@@ -20,6 +20,7 @@ class Person:
     name: str
     centroid: np.ndarray  # L2-normalized 512-d embedding
     num_refs: int
+    category: str = "key"
 
 
 @dataclass
@@ -27,12 +28,13 @@ class TrackedFace:
     """A face being tracked across frames."""
 
     face_id: int
-    bbox: tuple[int, int, int, int]  # (x1, y1, x2, y2)
+    bbox: tuple[int, int, int, int]
     label: str
     confidence: float
     status: Status
     hit_count: int = 0
     age: int = 0
+    category: str | None = None
     embedding_full: np.ndarray | None = None
     embedding_tracking: np.ndarray | None = None
     frames_since_verification: int = 0
