@@ -14,47 +14,24 @@ import cv2
 
 cv2.setNumThreads(1)
 
-import numpy as np
 from insightface.app import FaceAnalysis
 
 import config
-from data_loader import load_reference_identities
 from tracking import track_and_update_faces
-from utils import FPSMeter, draw_fps_label, draw_tracked_faces, expire_notifications
+from utils import FPSMeter, draw_fps_label, draw_tracked_faces
 
 
 def main():
     print(config.BANNER)
-    print("\nInitializing face analysis model...")
+    print(f"\n=== {config.APP_TITLE}: Face Tracking\n")
+
+    # Initialize detector/embedding (embeddings used ONLY for tracking stability)
     app = FaceAnalysis(
         name=config.DETECTION_MODEL_NAME,
-        allowed_modules=["detection", "recognition"],  # skip age/gender/3D landmarks
-        providers=["CPUExecutionProvider"],  # pin provider explicitly
+        allowed_modules=["detection", "recognition"],
+        providers=["CPUExecutionProvider"],
     )
     app.prepare(ctx_id=-1, det_size=config.DET_SIZE)
-    print("Model initialized.\n")
-
-    people, categories = load_reference_identities(app, config.KNOWN_DIR)
-    known_names = np.array([p.name for p in people], dtype=object)
-    known_categories = np.array(categories, dtype=object)
-    known_centroids = (
-        np.stack([p.centroid for p in people]).astype(np.float32)
-        if people
-        else np.empty((0, config.DETECTION_VECTOR_SIZE), np.float32)
-    )
-
-    # Diagnostics
-    cat_counts = {}
-    for c in known_categories:
-        cat_counts[c] = cat_counts.get(c, 0) + 1
-    cats_summary = ", ".join(f"{c}:{n}" for c, n in sorted(cat_counts.items())) or "none"
-    print(f"[DATA STRUCTURES] Loaded people: {len(people)} ({cats_summary})")
-    print(
-        f"[DATA STRUCTURES] Names: {len(known_names)}, Categories: {len(known_categories)}, "
-        f"Centroids: {known_centroids.shape[0]}"
-    )
-    print(f"[DEBUG] Names array: {list(known_names)}")
-    print(f"[DEBUG] Categories array: {list(known_categories)}\n")
 
     # Video capture
     print("Initializing webcam...")
@@ -69,32 +46,21 @@ def main():
 
         face_id_counter = 0
         tracked = []
-        notified = {}
-        frame_idx = 0
         fps_meter = FPSMeter()
 
         while True:
-            frame_idx += 1
             ok, frame = cap.read()
             if not ok:
                 break
 
             faces = app.get(frame)
-            expire_notifications(notified, frame_idx)
-
             tracked, face_id_counter = track_and_update_faces(
-                tracked,
-                faces,
-                known_names,
-                known_centroids,
-                known_categories,
-                face_id_counter,
-                notified,
-                frame_idx,
+                tracked=tracked,
+                detected_faces=faces,
+                face_id_counter=face_id_counter,
             )
 
             draw_tracked_faces(frame, tracked)
-
             fps_meter.tick()
             if config.SHOW_FPS:
                 draw_fps_label(frame, fps_meter, 10, 30)

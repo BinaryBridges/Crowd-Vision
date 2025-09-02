@@ -5,22 +5,14 @@ import numpy as np
 
 
 class Status(Enum):
-    """Tracking status for a face."""
+    """Tracking status for a face (no identity semantics)."""
 
-    CONFIRMED_KEY = 1  # Confirmed allowed person (or unknown confirmed)
-    CONFIRMED_BAD = 2  # Confirmed disallowed person
-    TENTATIVE = 3  # Detected but not yet confirmed
-    LOST = 4  # No longer tracked (aged out)
+    TENTATIVE = 1
+    CONFIRMED = 2
+    LOST = 3
 
 
-@dataclass
-class Person:
-    """Known identity built from reference images."""
-
-    name: str
-    centroid: np.ndarray  # L2-normalized 512-d embedding
-    num_refs: int
-    category: str = "key"
+BBox = tuple[int, int, int, int]
 
 
 @dataclass
@@ -28,13 +20,11 @@ class TrackedFace:
     """A face being tracked across frames."""
 
     face_id: int
-    bbox: tuple[int, int, int, int]
+    bbox: BBox
     label: str
-    confidence: float
     status: Status
     hit_count: int = 0
     age: int = 0
-    category: str | None = None
     embedding_full: np.ndarray | None = None
     embedding_tracking: np.ndarray | None = None
     frames_since_verification: int = 0

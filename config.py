@@ -1,51 +1,38 @@
-# ---- Data / Model ----
-KNOWN_DIR = "known_faces"  # Root folder holding category/name subfolders
-DETECTION_MODEL_NAME = "buffalo_s"  # InsightFace model suite name
-CAMERA_INDEX = 0  # Default webcam index
-DET_SIZE = (320, 320)  # Detector input size
+# ---- App Branding ----
+APP_TITLE = "CROWD VISION"
+WINDOW_TITLE = f"{APP_TITLE} (webcam)"
+BANNER = r"""
+################################################################################
+#                                                                              #
+#                                C R O W D   V I S I O N                       #
+#                                                                              #
+################################################################################
+"""
 
-# ---- Categories ----
-# Define each category (folder name) with a display label and BGR color for drawing.
-# To add a new role, add an entry here AND a folder under KNOWN_DIR with the same key.
-CATEGORY_META = {
-    "key": {"label": "Keyholder", "color": (0, 200, 0)},
-    "bad": {"label": "Watchlist", "color": (0, 0, 255)},
-    "friend": {"label": "Friend", "color": (60, 160, 255)},
-}
-PERSON_CATEGORIES = list(CATEGORY_META.keys())
+# ---- Runtime / Model ----
+CAMERA_INDEX = 0
+DETECTION_MODEL_NAME = "buffalo_s"  # small & fast bundle (SCRFD + ArcFace)
+DET_SIZE = (320, 320)  # detector input size (w, h)
 
-# ---- Thresholds & Hyperparameters ----
-SIM_THRESHOLD = 0.38  # Cosine similarity threshold for recognition (0-1)
-MIN_FACE_SIZE = 32  # Minimum face size to consider (pixels)
-MIN_HITS_TO_CONFIRM = 10  # Frames needed to confirm a tentative face
-MAX_AGE_BEFORE_LOST = 5  # Frames unseen before marking LOST
-PERIODIC_VERIFY_EVERY = 10  # Verify confirmed faces every N frames
-NOTIFY_COOLDOWN_FRAMES = 100  # Frames to wait before re-notifying same person
+# ---- Tracking thresholds ----
+MIN_FACE_SIZE = 40  # pixels: ignore tiny detections
+MAX_AGE_BEFORE_LOST = 20  # frames until a track becomes LOST if not matched
+MIN_HITS_TO_CONFIRM = 3  # frames required to promote TENTATIVE -> CONFIRMED
+TENTATIVE_MIN_IOU = 0.30  # minimal IoU to consider tentative match
+CONF_STRONG_SIM = 0.70  # "strong" sim/IoU gate for confirmed tracks
+ASSOC_MIN_SCORE = 0.30  # minimal greedy association score to accept match
+REACTIVATE_MIN_SIM = 0.75  # full-embedding cosine sim to revive LOST tracks
 
-# Association/verification fine-tuning (moved from magic numbers in code)
-ASSOC_MIN_SCORE = 0.4  # Minimum association score to pair a detection with a track
-CONF_STRONG_SIM = 0.7  # "Strong" sim/IoU threshold for confirmed tracks
-TENTATIVE_MIN_IOU = 0.3  # Minimum IoU to consider a tentative match
-TRACK_DRIFT_MIN_SIM = 0.6  # Reduced-embedding similarity below which we reset hits (drift)
-REACTIVATE_MIN_SIM = 0.75  # Full-embedding similarity to reactivate a LOST track
-
-# ---- Embedding settings ----
-DETECTION_VECTOR_SIZE = 512  # ArcFace embedding size
-TRACK_VERIFY_VECTOR_SIZE = 128  # Reduced embedding used in tracking verification
+# ---- Embedding settings (ArcFace) ----
+TRACK_VERIFY_VECTOR_SIZE = 128  # reduced dim used during tracking
 
 # ---- Display ----
 SHOW_FPS = True
-WINDOW_TITLE = "Face ID (webcam)"
-BANNER = (
-    "██████╗░░█████╗░██████╗░░█████╗░██╗░░██╗  ███████╗██╗░░░██╗███████╗\n"
-    "██╔══██╗██╔══██╗██╔══██╗██╔══██╗██║░░██║  ██╔════╝╚██╗░██╔╝██╔════╝\n"
-    "██████╔╝██║░░██║██████╔╝██║░░╚═╝███████║  █████╗░░░╚████╔╝░█████╗░░\n"
-    "██╔═══╝░██║░░██║██╔══██╗██║░░██╗██╔══██║  ██╔══╝░░░░╚██╔╝░░██╔══╝░░\n"
-    "██║░░░░░╚█████╔╝██║░░██║╚█████╔╝██║░░██║  ███████╗░░░██║░░░███████╗\n"
-    "╚═╝░░░░░░╚════╝░╚═╝░░╚═╝░╚════╝░╚═╝░░╚═╝  ╚══════╝░░░╚═╝░░░╚══════╝"
-)
+FPS_ALPHA = 0.12  # EMA smoothing factor for FPS
+FPS_MAX_DT_CLAMP = 0.50  # clamp dt spikes in seconds
+FPS_DECIMALS = 1  # FPS decimals
 
-# --- FPS display tuning ---
-FPS_ALPHA = 0.12  # EMA smoothing factor (0..1), larger = more responsive
-FPS_MAX_DT_CLAMP = 0.5  # clamp a single frame's dt to avoid giant spikes
-FPS_DECIMALS = 1  # decimals to show in the FPS label
+# ---- Drawing ----
+COLOR_UNKNOWN = (50, 180, 255)  # BGR for Unknown boxes/labels
+TEXT_COLOR = (255, 255, 255)  # label text color
+TEXT_BG = (30, 30, 30)  # label background
