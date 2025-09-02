@@ -7,7 +7,7 @@ import config
 from models import Status, TrackedFace
 
 
-# --- math helpers ---
+# Math helpers
 def _l2(v: np.ndarray) -> np.ndarray:
     return v / (np.linalg.norm(v, axis=-1, keepdims=True) + 1e-9)
 
@@ -24,7 +24,17 @@ def reduce_embedding_for_tracking(emb: np.ndarray) -> np.ndarray:
     return _l2(emb[..., :k])
 
 
-# --- drawing ---
+# Demographics formatting
+def _fmt_demo(t: TrackedFace) -> str:
+    parts = []
+    if t.gender:
+        parts.append("M" if t.gender.lower().startswith("m") else "F")
+    if t.age_years is not None:
+        parts.append(f"{round(t.age_years)}")
+    return (" (" + ", ".join(parts) + ")") if parts else ""
+
+
+# Drawing
 def _label(img, text: str, x: int, y: int) -> None:
     font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1
     (tw, th), base = cv2.getTextSize(text, font, scale, thickness)
@@ -34,16 +44,15 @@ def _label(img, text: str, x: int, y: int) -> None:
 
 
 def draw_tracked_faces(frame, tracked: list[TrackedFace]) -> None:
-    # Render only confirmed tracks to avoid flicker/duplicates during fast motion.
     for t in tracked:
         if t.status != Status.CONFIRMED:
             continue
         x1, y1, x2, y2 = t.bbox
         cv2.rectangle(frame, (x1, y1), (x2, y2), config.COLOR_UNKNOWN, 2)
-        _label(frame, "Unknown", x1 + 2, max(20, y1 - 6))
+        _label(frame, "Unknown" + _fmt_demo(t), x1 + 2, max(20, y1 - 6))
 
 
-# --- fps meter ---
+# FPS
 class FPSMeter:
     def __init__(self, alpha: float | None = None):
         self.alpha = float(config.FPS_ALPHA if alpha is None else alpha)

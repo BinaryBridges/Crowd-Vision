@@ -5,7 +5,7 @@ import numpy as np
 
 
 class Status(Enum):
-    """Tracking status for a face (no identity semantics)."""
+    """Tracking status for a face"""
 
     TENTATIVE = 1
     CONFIRMED = 2
@@ -28,3 +28,5 @@ class TrackedFace:
     embedding_full: np.ndarray | None = None
     embedding_tracking: np.ndarray | None = None
     frames_since_verification: int = 0
+    age_years: float | None = None
+    gender: str | None = None

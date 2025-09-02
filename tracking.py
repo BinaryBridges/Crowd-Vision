@@ -7,34 +7,21 @@ import config
 from models import Status, TrackedFace
 from utils import cosine_similarity, reduce_embedding_for_tracking
 
-_DET_NMS_IOU = 0.55
-_MATCH_GROW_PX = 14
-_SPAWN_SUPPRESS_IOU = 0.70
-_SPAWN_SUPPRESS_SIM = 0.70
-_SUPPRESS_IOU = 0.85
 
-
-# --- geometry ---
-def _iou(b1: tuple[int, int, int, int], b2: tuple[int, int, int, int]) -> float:
-    x1, y1, x2, y2 = b1
-    x1b, y1b, x2b, y2b = b2
-    xi1, yi1 = max(x1, x1b), max(y1, y1b)
-    xi2, yi2 = min(x2, x2b), min(y2, y2b)
-    if xi2 <= xi1 or yi2 <= yi1:
-        return 0.0
-    inter = float((xi2 - xi1) * (yi2 - yi1))
-    a1 = float((x2 - x1) * (y2 - y1))
-    a2 = float((x2b - x1b) * (y2b - y1b))
-    denom = a1 + a2 - inter
-    return inter / denom if denom > 0 else 0.0
-
-
-def _expand(b: tuple[int, int, int, int], px: int) -> tuple[int, int, int, int]:
+# Geometry
+def _center(b: tuple[int, int, int, int]) -> tuple[float, float]:
     x1, y1, x2, y2 = b
-    return (x1 - px, y1 - px, x2 + px, y2 + px)
+    return (0.5 * (x1 + x2), 0.5 * (y1 + y2))
 
 
-# --- utilities ---
+def _dist_px(b1: tuple[int, int, int, int], b2: tuple[int, int, int, int]) -> float:
+    cx1, cy1 = _center(b1)
+    cx2, cy2 = _center(b2)
+    dx, dy = cx1 - cx2, cy1 - cy2
+    return float((dx * dx + dy * dy) ** 0.5)
+
+
+# Utilities
 def _age_tracks(tracked: list[TrackedFace]) -> None:
     for t in tracked:
         t.age += 1
@@ -53,16 +40,19 @@ def _valid_detections(detected_faces: Sequence) -> list[tuple[tuple[int, int, in
     return out
 
 
-def _nms(det_items: list[tuple[tuple[int, int, int, int], object]]):
+def _nms_distance(det_items: list[tuple[tuple[int, int, int, int], object]]):
     if not det_items:
         return det_items
     scored = [(float(getattr(o, "det_score", 0.5)), b, o) for b, o in det_items]
     scored.sort(key=operator.itemgetter(0), reverse=True)
-    kept, kept_boxes = [], []
+    kept: list[tuple[tuple[int, int, int, int], object]] = []
+    centers: list[tuple[float, float]] = []
+
     for _, b, o in scored:
-        if all(_iou(b, kb) < _DET_NMS_IOU for kb in kept_boxes):
+        c = _center(b)
+        if all((((c[0] - kc[0]) ** 2 + (c[1] - kc[1]) ** 2) ** 0.5) > config.DET_NMS_DIST_PX for kc in centers):
             kept.append((b, o))
-            kept_boxes.append(b)
+            centers.append(c)
     return kept
 
 
@@ -79,20 +69,47 @@ def _embeddings(face_obj) -> tuple[np.ndarray | None, np.ndarray | None]:
     return emb, reduce_embedding_for_tracking(emb) if emb is not None else None
 
 
+def _extract_demographics(face_obj) -> tuple[float | None, str | None]:
+    """Pull very basic demo fields if the module provides them."""
+    age = getattr(face_obj, "age", None)
+    g = getattr(face_obj, "gender", None)
+    if g is None:
+        g = getattr(face_obj, "sex", None)
+    gender_str: str | None
+    if isinstance(g, (int, np.integer)):
+        gender_str = "Male" if int(g) == 1 else "Female"
+    elif isinstance(g, str):
+        gender_str = "Male" if g.lower().startswith("m") else "Female" if g.lower().startswith("f") else None
+    else:
+        gender_str = None
+    return (float(age) if age is not None else None, gender_str)
+
+
+def _apply_demographics(t: TrackedFace, face_obj) -> None:
+    age, gender = _extract_demographics(face_obj)
+    if age is not None:
+        if t.age_years is None:
+            t.age_years = age
+        else:
+            t.age_years = 0.7 * t.age_years + 0.3 * age
+    if gender and not t.gender:
+        t.gender = gender
+
+
 def _assoc_score(track: TrackedFace, bbox: tuple[int, int, int, int], emb_red: np.ndarray | None) -> float:
     if track.status == Status.LOST:
         return 0.0
-    overlap = _iou(bbox, _expand(track.bbox, _MATCH_GROW_PX))
+    if _dist_px(track.bbox, bbox) > config.MAX_CENTER_DIST_PX:
+        return 0.0
+
     emb_sim = 0.0
     if emb_red is not None and track.embedding_tracking is not None:
         emb_sim = float(cosine_similarity(track.embedding_tracking.reshape(1, -1), emb_red)[0])
+
     if track.status == Status.CONFIRMED:
-        return (
-            emb_sim * 0.7 + overlap * 0.3
-            if (emb_sim > config.CONF_STRONG_SIM or overlap > config.CONF_STRONG_SIM)
-            else 0.0
-        )
-    return (overlap * 0.7 + emb_sim * 0.3) if overlap > config.TENTATIVE_MIN_IOU else 0.0
+        return emb_sim if emb_sim > config.CONF_STRONG_SIM else 0.0
+
+    return emb_sim
 
 
 def _confirm_if_ready(t: TrackedFace) -> None:
@@ -110,14 +127,14 @@ def _maybe_merge_with_active(
     for t in tracked:
         if t.status == Status.LOST or t.age == 0:
             continue
-        overlap = _iou(bbox, _expand(t.bbox, _MATCH_GROW_PX))
+        near = _dist_px(bbox, t.bbox) <= config.SPAWN_SUPPRESS_DIST_PX
         sim = (
             float(cosine_similarity(t.embedding_tracking.reshape(1, -1), emb_red)[0])
             if (emb_red is not None and t.embedding_tracking is not None)
             else 0.0
         )
-        if overlap >= _SPAWN_SUPPRESS_IOU or sim >= _SPAWN_SUPPRESS_SIM:
-            score = sim * 0.7 + overlap * 0.3
+        if near or sim >= config.CONF_STRONG_SIM:
+            score = sim
             if score > best_score:
                 best, best_score = t, score
     if best is None:
@@ -170,13 +187,7 @@ def _reactivate_or_create_track(
     for t in tracked:
         if t.status == Status.LOST or t.age != 0:
             continue
-        overlap = _iou(bbox, _expand(t.bbox, _MATCH_GROW_PX))
-        sim = (
-            float(cosine_similarity(t.embedding_tracking.reshape(1, -1), emb_red)[0])
-            if (emb_red is not None and t.embedding_tracking is not None)
-            else 0.0
-        )
-        if overlap >= _SPAWN_SUPPRESS_IOU or sim >= _SPAWN_SUPPRESS_SIM:
+        if _dist_px(bbox, t.bbox) <= config.SPAWN_SUPPRESS_DIST_PX:
             return face_id_counter
 
     tracked.append(
@@ -202,7 +213,7 @@ def _dedupe_active(tracked: list[TrackedFace]) -> None:
         ti = tracked[active[i]]
         for j in range(i + 1, len(active)):
             tj = tracked[active[j]]
-            if _iou(ti.bbox, tj.bbox) >= _SUPPRESS_IOU:
+            if _dist_px(ti.bbox, tj.bbox) <= config.DEDUPE_DIST_PX:
                 keep_i = (ti.hit_count > tj.hit_count) or (ti.hit_count == tj.hit_count and ti.face_id < tj.face_id)
                 drop = tj if keep_i else ti
                 to_drop.add(drop.face_id)
@@ -223,9 +234,10 @@ def track_and_update_faces(
 ) -> tuple[list[TrackedFace], int]:
     _age_tracks(tracked)
 
-    det_items = _nms(_valid_detections(detected_faces))
+    det_items = _nms_distance(_valid_detections(detected_faces))
     matched_det_idxs, used_track_ids = set(), set()
 
+    # 1) Try to associate detections to existing tracks
     for det_idx, (bbox, df) in enumerate(det_items):
         emb_full, emb_red = _embeddings(df)
 
@@ -237,7 +249,7 @@ def track_and_update_faces(
             if score > best_score:
                 best_track, best_score = t, score
 
-        if best_track is None or best_score < config.ASSOC_MIN_SCORE:
+        if best_track is None or best_score < config.ASSOC_MIN_SIM:
             continue
 
         matched_det_idxs.add(det_idx)
@@ -254,11 +266,21 @@ def track_and_update_faces(
         else:
             best_track.frames_since_verification = 0
 
+        # Update demographics opportunistically
+        _apply_demographics(best_track, df)
+
+    # 2) Spawn or reactivate for unmatched detections
     for det_idx, (bbox, df) in enumerate(det_items):
         if det_idx in matched_det_idxs:
             continue
         emb_full, emb_red = _embeddings(df)
         face_id_counter = _reactivate_or_create_track(tracked, bbox, emb_full, emb_red, face_id_counter)
+
+        # Apply demographics on newly spawned/reactivated tracks
+        for t in tracked:
+            if t.face_id == face_id_counter - 1 and t.age == 0 and t.hit_count == 1 and t.status == Status.TENTATIVE:
+                _apply_demographics(t, df)
+                break
 
     _dedupe_active(tracked)
     tracked = _purge(tracked)

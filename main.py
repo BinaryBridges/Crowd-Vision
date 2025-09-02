@@ -25,10 +25,10 @@ def main():
     print(config.BANNER)
     print(f"\n=== {config.APP_TITLE}: Face Tracking\n")
 
-    # Initialize detector/embedding (embeddings used ONLY for tracking stability)
+    # Initialize detector/embedding
     app = FaceAnalysis(
         name=config.DETECTION_MODEL_NAME,
-        allowed_modules=["detection", "recognition"],
+        allowed_modules=["detection", "recognition", "genderage"],
         providers=["CPUExecutionProvider"],
     )
     app.prepare(ctx_id=-1, det_size=config.DET_SIZE)

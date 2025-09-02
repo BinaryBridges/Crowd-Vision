@@ -26,6 +26,7 @@ ignore = [
     "T201",
 
     # Complexity/size relaxations
+    "PLR0912",
     "PLR0914",
     "PLR0915",
     "PLR2004",
