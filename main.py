@@ -38,8 +38,8 @@ def main():
     cap = None
     try:
         cap = cv2.VideoCapture(config.CAMERA_INDEX)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open webcam (index {config.CAMERA_INDEX}).")
         print("Done.\nPress 'q' to quit.\n")

@@ -12,7 +12,7 @@ BANNER = r"""
 # Runtime / Model
 CAMERA_INDEX = 0
 DETECTION_MODEL_NAME = "buffalo_s"
-DET_SIZE = (320, 320)
+DET_SIZE = (640, 640)
 
 # Tracking thresholds
 MIN_FACE_SIZE = 40  # pixels: ignore tiny detections
