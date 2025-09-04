@@ -1,10 +1,10 @@
+import contextlib
 from time import perf_counter
 
 import cv2
 import numpy as np
 
 import config
-from models import Status, TrackedFace
 
 
 # Math helpers
@@ -24,17 +24,37 @@ def reduce_embedding_for_tracking(emb: np.ndarray) -> np.ndarray:
     return _l2(emb[..., :k])
 
 
-# Demographics formatting
-def _fmt_demo(t: TrackedFace) -> str:
+def _short_gender(g) -> str | None:
+    # Accepts numeric or string (varies by model)
+    if isinstance(g, (int, np.integer)):
+        return "M" if int(g) == 1 else "F"
+    if isinstance(g, str):
+        s = g.lower()
+        if s.startswith("m"):
+            return "M"
+        if s.startswith("f"):
+            return "F"
+    return None
+
+
+def _fmt_demo_from_face(face_obj) -> str:
+    # Try both 'gender' and 'sex' attributes; try 'age'
+    g = getattr(face_obj, "gender", None)
+    if g is None:
+        g = getattr(face_obj, "sex", None)
+    gender_short = _short_gender(g)
+
+    age_val = getattr(face_obj, "age", None)
     parts = []
-    if t.gender:
-        parts.append("M" if t.gender.lower().startswith("m") else "F")
-    if t.age_years is not None:
-        parts.append(f"{round(t.age_years)}")
+    if gender_short:
+        parts.append(gender_short)
+    if age_val is not None:
+        with contextlib.suppress(Exception):
+            parts.append(str(round(float(age_val))))
+
     return (" (" + ", ".join(parts) + ")") if parts else ""
 
 
-# Drawing
 def _label(img, text: str, x: int, y: int) -> None:
     font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1
     (tw, th), base = cv2.getTextSize(text, font, scale, thickness)
@@ -43,13 +63,15 @@ def _label(img, text: str, x: int, y: int) -> None:
     cv2.putText(img, text, (x, y), font, scale, config.TEXT_COLOR, thickness, cv2.LINE_AA)
 
 
-def draw_tracked_faces(frame, tracked: list[TrackedFace]) -> None:
-    for t in tracked:
-        if t.status != Status.CONFIRMED:
-            continue
-        x1, y1, x2, y2 = t.bbox
+def draw_detections(frame, detections) -> None:
+    """
+    Draw boxes + demographics for the current frame's detections only (stateless).
+    """
+    for f in detections:
+        # bbox comes from insightface face object
+        x1, y1, x2, y2 = map(int, f.bbox)
         cv2.rectangle(frame, (x1, y1), (x2, y2), config.COLOR_UNKNOWN, 2)
-        _label(frame, "Unknown" + _fmt_demo(t), x1 + 2, max(20, y1 - 6))
+        _label(frame, "Unknown" + _fmt_demo_from_face(f), x1 + 2, max(20, y1 - 6))
 
 
 # FPS

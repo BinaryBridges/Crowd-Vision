@@ -13,7 +13,7 @@
 ### Steps to run
 
 # 1) Start virtual environment
-py -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\Activate
 
 # 2) Ensure pip targets this interpreter

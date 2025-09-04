@@ -17,18 +17,15 @@ cv2.setNumThreads(1)
 from insightface.app import FaceAnalysis
 
 import config
-from tracking import track_and_update_faces
-from utils import FPSMeter, draw_fps_label, draw_tracked_faces
+from utils import FPSMeter, draw_detections, draw_fps_label
 
 
 def main():
     print(config.BANNER)
-    print(f"\n=== {config.APP_TITLE}: Face Tracking\n")
-
-    # Initialize detector/embedding
+    print(f"{config.APP_TITLE}\n")
     app = FaceAnalysis(
         name=config.DETECTION_MODEL_NAME,
-        allowed_modules=["detection", "recognition", "genderage"],
+        allowed_modules=["detection", "genderage"],
         providers=["CPUExecutionProvider"],
     )
     app.prepare(ctx_id=-1, det_size=config.DET_SIZE)
@@ -44,8 +41,6 @@ def main():
             raise RuntimeError(f"Could not open webcam (index {config.CAMERA_INDEX}).")
         print("Done.\nPress 'q' to quit.\n")
 
-        face_id_counter = 0
-        tracked = []
         fps_meter = FPSMeter()
 
         while True:
@@ -54,13 +49,8 @@ def main():
                 break
 
             faces = app.get(frame)
-            tracked, face_id_counter = track_and_update_faces(
-                tracked=tracked,
-                detected_faces=faces,
-                face_id_counter=face_id_counter,
-            )
+            draw_detections(frame, faces)
 
-            draw_tracked_faces(frame, tracked)
             fps_meter.tick()
             if config.SHOW_FPS:
                 draw_fps_label(frame, fps_meter, 10, 30)
