@@ -14,86 +14,42 @@ import cv2
 
 cv2.setNumThreads(1)
 
-import numpy as np
 from insightface.app import FaceAnalysis
 
 import config
-from data_loader import load_reference_identities
-from tracking import track_and_update_faces
-from utils import FPSMeter, draw_fps_label, draw_tracked_faces, expire_notifications
+from utils import FPSMeter, draw_detections, draw_fps_label
 
 
 def main():
     print(config.BANNER)
-    print("\nInitializing face analysis model...")
+    print(f"{config.APP_TITLE}\n")
     app = FaceAnalysis(
         name=config.DETECTION_MODEL_NAME,
-        allowed_modules=["detection", "recognition"],  # skip age/gender/3D landmarks
-        providers=["CPUExecutionProvider"],  # pin provider explicitly
+        allowed_modules=["detection", "genderage"],
+        providers=["CPUExecutionProvider"],
     )
     app.prepare(ctx_id=-1, det_size=config.DET_SIZE)
-    print("Model initialized.\n")
-
-    people, categories = load_reference_identities(app, config.KNOWN_DIR)
-    known_names = np.array([p.name for p in people], dtype=object)
-    known_categories = np.array(categories, dtype=object)
-    known_centroids = (
-        np.stack([p.centroid for p in people]).astype(np.float32)
-        if people
-        else np.empty((0, config.DETECTION_VECTOR_SIZE), np.float32)
-    )
-
-    # Diagnostics
-    cat_counts = {}
-    for c in known_categories:
-        cat_counts[c] = cat_counts.get(c, 0) + 1
-    cats_summary = ", ".join(f"{c}:{n}" for c, n in sorted(cat_counts.items())) or "none"
-    print(f"[DATA STRUCTURES] Loaded people: {len(people)} ({cats_summary})")
-    print(
-        f"[DATA STRUCTURES] Names: {len(known_names)}, Categories: {len(known_categories)}, "
-        f"Centroids: {known_centroids.shape[0]}"
-    )
-    print(f"[DEBUG] Names array: {list(known_names)}")
-    print(f"[DEBUG] Categories array: {list(known_categories)}\n")
 
     # Video capture
     print("Initializing webcam...")
     cap = None
     try:
         cap = cv2.VideoCapture(config.CAMERA_INDEX)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open webcam (index {config.CAMERA_INDEX}).")
         print("Done.\nPress 'q' to quit.\n")
 
-        face_id_counter = 0
-        tracked = []
-        notified = {}
-        frame_idx = 0
         fps_meter = FPSMeter()
 
         while True:
-            frame_idx += 1
             ok, frame = cap.read()
             if not ok:
                 break
 
             faces = app.get(frame)
-            expire_notifications(notified, frame_idx)
-
-            tracked, face_id_counter = track_and_update_faces(
-                tracked,
-                faces,
-                known_names,
-                known_centroids,
-                known_categories,
-                face_id_counter,
-                notified,
-                frame_idx,
-            )
-
-            draw_tracked_faces(frame, tracked)
+            draw_detections(frame, faces)
 
             fps_meter.tick()
             if config.SHOW_FPS:

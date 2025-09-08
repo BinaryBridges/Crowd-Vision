@@ -24,9 +24,5 @@ jobs:
           cache: 'pip'
 
       - run: pip install --upgrade ruff
-
-      # Fail if files aren’t formatted the Ruff way
       - run: ruff format --check .
-
-      # Fail on lint violations
       - run: ruff check .
