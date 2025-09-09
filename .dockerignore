@@ -1,0 +1,10 @@
+__pycache__/
+.github/
+scripts/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+.env
+.git
+.gitignore
