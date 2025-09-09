@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller
+  namespace: app
+  labels: { app: controller }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: controller } }
+  template:
+    metadata:
+      labels: { app: controller }
+    spec:
+      serviceAccountName: app-sa
+      containers:
+        - name: controller
+          image: your-app:dev               # local image tag (kind/minikube friendly)
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ROLE
+              value: "controller"
+          envFrom:
+            - configMapRef: { name: app-config }
+            - secretRef:    { name: app-secrets }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }

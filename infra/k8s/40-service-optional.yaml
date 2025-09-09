@@ -1,0 +1,14 @@
+#ONLY NEEDED IF EXPOSING PORTS
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: controller
+  namespace: app
+spec:
+  selector: { app: controller }
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000   # match your container port if/when you add one
+  type: ClusterIP
