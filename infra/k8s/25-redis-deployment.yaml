@@ -21,13 +21,32 @@ spec:
             - "2gb"
             - --maxmemory-policy
             - allkeys-lru
+            # Persistence settings for image processing workload
             - --save
             - "900"
             - "1"
+            - --save
+            - "300"
+            - "10"
+            - --save
+            - "60"
+            - "10000"
             - --appendonly
             - "yes"
             - --appendfsync
             - everysec
+            # Stream settings for high-throughput queues
+            - --stream-node-max-bytes
+            - "4096"
+            - --stream-node-max-entries
+            - "100"
+            # Memory optimization for image data
+            - --hash-max-ziplist-entries
+            - "512"
+            - --hash-max-ziplist-value
+            - "64"
+            - --list-max-ziplist-size
+            - "-2"
           ports:
             - containerPort: 6379
               name: redis

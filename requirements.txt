@@ -4,3 +4,4 @@ insightface>=0.7
 onnxruntime>=1.16
 pillow>=9.0
 scikit-image>=0.21
+redis>=6.4.0
