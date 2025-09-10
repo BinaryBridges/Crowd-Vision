@@ -65,4 +65,4 @@ kubectl -n app rollout status deploy/controller --timeout=120s | Out-Host
 kubectl -n app rollout status deploy/worker     --timeout=120s | Out-Host
 
 Write-Host "==> Summary (namespace app)"
-kubectl -n app get deploy,pod,svc,hpa,job,cronjob -o wide | Out-Host
+kubectl -n app get deploy,pod,svc,hpa -o wide | Out-Host

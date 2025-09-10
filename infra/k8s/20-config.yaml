@@ -5,3 +5,15 @@ metadata:
   namespace: app
 data:
   APP_MODE: "blank"
+  REDIS_HOST: "redis.app.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_DB_STORAGE: "0"
+  REDIS_DB_STREAMS: "1"
+  # Worker queue configuration
+  MOTION_DETECTION_QUEUE: "stream:motion_detection_queue"
+  IMAGE_PROCESSOR_QUEUE: "stream:image_processor_queue"
+  RESULTS_QUEUE: "stream:results_queue"
+  # Worker settings
+  MOTION_DETECTION_BATCH_SIZE: "5"
+  IMAGE_PROCESSOR_BATCH_SIZE: "10"
+  WORKER_POLL_TIMEOUT: "1000"

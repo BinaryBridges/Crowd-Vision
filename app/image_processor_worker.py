@@ -1,4 +1,4 @@
-def start_worker():
+def start_image_processor_worker():
     """Main loop for a worker."""
 
 

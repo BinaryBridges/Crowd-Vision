@@ -1,27 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: worker
+  name: motion-detection-worker
   namespace: app
-  labels: { app: worker }
+  labels: { app: motion-detection-worker, worker-type: motion-detection }
 spec:
-  replicas: 2
-  selector: { matchLabels: { app: worker } }
+  replicas: 1
+  selector: { matchLabels: { app: motion-detection-worker } }
   template:
     metadata:
-      labels: { app: worker }
+      labels: { app: motion-detection-worker, worker-type: motion-detection }
     spec:
       serviceAccountName: app-sa
       containers:
-        - name: worker
+        - name: motion-detection-worker
           image: your-app:dev               # same image; role differs via env
           imagePullPolicy: IfNotPresent
           env:
             - name: ROLE
-              value: "worker"
+              value: "motion-detection-worker"
+            - name: WORKER_TYPE
+              value: "motion-detection"
           envFrom:
             - configMapRef: { name: app-config }
             - secretRef:    { name: app-secrets }
           resources:
-            requests: { cpu: "100m", memory: "128Mi" }
-            limits:   { cpu: "500m", memory: "512Mi" }
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "800m", memory: "1Gi" }

@@ -5,7 +5,11 @@ resources:
   - 10-serviceaccount-rbac.yaml
   - 20-config.yaml
   - 21-secrets.example.yaml
+  - 25-redis-deployment.yaml
   - 30-deployment-controller.yaml
   - 31-deployment-workers.yaml
+  - 32-deployment-image-processor-workers.yaml
   - 40-service-optional.yaml
   - 50-hpa-workers.yaml
+  - 52-hpa-motion-detection-workers.yaml
+  - 53-hpa-image-processor-workers.yaml

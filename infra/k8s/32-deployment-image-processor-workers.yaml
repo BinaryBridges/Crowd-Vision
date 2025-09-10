@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-processor-worker
+  namespace: app
+  labels: { app: image-processor-worker, worker-type: image-processor }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: image-processor-worker } }
+  template:
+    metadata:
+      labels: { app: image-processor-worker, worker-type: image-processor }
+    spec:
+      serviceAccountName: app-sa
+      containers:
+        - name: image-processor-worker
+          image: your-app:dev               # same image; role differs via env
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ROLE
+              value: "image-processor-worker"
+            - name: WORKER_TYPE
+              value: "image-processor"
+          envFrom:
+            - configMapRef: { name: app-config }
+            - secretRef:    { name: app-secrets }
+          resources:
+            requests: { cpu: "200m", memory: "512Mi" }
+            limits:   { cpu: "1500m", memory: "2Gi" }
