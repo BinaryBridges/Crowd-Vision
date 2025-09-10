@@ -1,4 +1,4 @@
-def start_worker():
+def start_motion_detection_worker():
     """Main loop for a worker."""
 
 

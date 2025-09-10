@@ -5,3 +5,16 @@ metadata:
   namespace: app
 data:
   APP_MODE: "blank"
+  REDIS_HOST: "redis.app.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_DB_STORAGE: "0"
+  REDIS_DB_STREAMS: "1"
+  # Basic Redis setup - put your queue names here
+  MOTION_DETECTION_QUEUE: "motion_queue"     # <- change this to whatever you want
+  IMAGE_PROCESSOR_QUEUE: "image_queue"       # <- change this to whatever you want
+  RESULTS_QUEUE: "results_queue"             # <- change this to whatever you want
+
+  # Basic worker settings - adjust numbers as needed
+  MOTION_DETECTION_BATCH_SIZE: "5"           # <- how many items to process at once
+  IMAGE_PROCESSOR_BATCH_SIZE: "10"           # <- how many items to process at once
+  WORKER_POLL_TIMEOUT: "1000"                # <- how long to wait for new items (ms)

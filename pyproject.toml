@@ -1,54 +1,94 @@
 [tool.ruff]
+# Maximum line length for code formatting
 line-length = 120
+# Target Python version for compatibility checks
 target-version = "py312"
+# Enable preview features (experimental rules)
 preview = true
 
 [tool.ruff.lint]
+# Select ALL available rules by default, then ignore specific ones below
 select = ["ALL"]
 ignore = [
-    #### modules
-    "ANN", "COM", "C90", "DJ", "EXE", "T10", "TID",
+    #### Module-level rule categories (disabled entirely)
+    "ANN",  # flake8-annotations: Type annotation requirements
+    "COM",  # flake8-commas: Trailing comma enforcement
+    "C90",  # mccabe: Cyclomatic complexity checks
+    "DJ",   # flake8-django: Django-specific rules
+    "EXE",  # flake8-executable: Executable file checks
+    "T10",  # flake8-debugger: Debugger import detection
+    "TID",  # flake8-tidy-imports: Import organization
 
-    #### specific rules (docstrings, style, etc.)
-    "D100","D101","D102","D103","D104","D105","D106","D107",
-    "D200","D205","D212","D400","D401","D415",
-    "D203",
-    "DOC",
-    "CPY001",
-    "RUF002",
+    #### Docstring rules (disabled for faster development)
+    "D100", # Missing docstring in public module
+    "D101", # Missing docstring in public class
+    "D102", # Missing docstring in public method
+    "D103", # Missing docstring in public function
+    "D104", # Missing docstring in public package
+    "D105", # Missing docstring in magic method
+    "D106", # Missing docstring in public nested class
+    "D107", # Missing docstring in __init__
+    "D200", # One-line docstring should fit on one line
+    "D205", # 1 blank line required between summary line and description
+    "D212", # Multi-line docstring summary should start at the first line
+    "D400", # First line should end with a period
+    "D401", # First line should be in imperative mood
+    "D415", # First line should end with a period, question mark, or exclamation point
+    "D203", # 1 blank line required before class docstring
+    "DOC",  # pydoclint: Docstring validation
 
-    "E402","E501",
-    "TRY003",
-    "TD002","TD003",
-    "FIX002",
+    #### Miscellaneous style rules
+    "CPY001", # Missing copyright notice
+    "RUF002", # Ambiguous unicode character in docstring
 
-    # Dev-time prints are fine.
-    "T201",
+    #### Import and formatting rules
+    "E402", # Module level import not at top of file
+    "E501", # Line too long (handled by formatter)
 
-    # Complexity/size relaxations
-    "PLR0912",
-    "PLR0914",
-    "PLR0915",
-    "PLR2004",
+    #### Exception handling rules
+    "TRY003", # Avoid specifying long messages outside the exception class (DISABLED: allows string literals)
 
-    # Allow f-strings directly in exceptions.
-    "EM102",
+    #### TODO/FIXME comment rules
+    "TD002", # Missing author in TODO
+    "TD003", # Missing issue link on TODO line
+    "FIX002", # Line contains TODO, consider resolving the issue
 
-    # Pathlib preference checks (disabled)
-    "PTH118",
-    "PTH207",
-    "PTH208"
+    #### Development-friendly rules
+    "T201", # print() statements allowed (useful for debugging)
+
+    #### Control flow rules
+    "RET505", # Unnecessary `else` after `return` statement (conflicts with RET506)
+    "RET506", # Consider moving this statement to an `else` block (conflicts with RET505)
+
+    #### Code complexity relaxations
+    "PLR0912", # Too many branches
+    "PLR0914", # Too many local variables
+    "PLR0915", # Too many statements
+    "PLR2004", # Magic value used in comparison
+
+    #### Exception message formatting
+    "EM101", # Exception must not use a string literal (DISABLED: allows string literals in exceptions)
+    "EM102", # Exception must not use an f-string literal (DISABLED: allows f-strings in exceptions)
+
+    #### Path handling preferences (disabled)
+    "PTH118", # os.path.join should be replaced by pathlib
+    "PTH207", # glob should be replaced by pathlib
+    "PTH208", # iterdir should be used instead of listdir
+
+    #### Commented code rules (DISABLED: allows commented out code)
+    "ERA001", # Found commented-out code
 ]
 
 [tool.ruff.lint.pylint]
-# Loosen argument-count rules.
-max-args = 10
-max-positional-args = 10
+# Pylint-specific configuration
+max-args = 10              # Maximum number of arguments for function/method (default: 5)
+max-positional-args = 10   # Maximum number of positional arguments (default: 5)
 
 [tool.ruff.format]
-quote-style = "preserve"
-indent-style = "space"
-line-ending = "auto"
-skip-magic-trailing-comma = false
-docstring-code-format = true
-docstring-code-line-length = 79
+# Code formatting configuration
+quote-style = "preserve"              # Keep existing quote style (don't force single/double)
+indent-style = "space"                # Use spaces for indentation (not tabs)
+line-ending = "auto"                  # Auto-detect line endings (\n vs \r\n)
+skip-magic-trailing-comma = false     # Add trailing commas where syntactically valid
+docstring-code-format = true          # Format code blocks inside docstrings
+docstring-code-line-length = 79       # Line length for code in docstrings (shorter than main code)
