@@ -1,5 +1,3 @@
-
-
 def start_image_processor_worker():
     """Main loop for a worker."""
 
