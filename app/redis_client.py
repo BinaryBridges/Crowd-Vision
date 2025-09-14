@@ -10,7 +10,7 @@ import redis
 
 class RedisClient:
     # === DEFINE YOUR DATA STRUCTURE ONCE ===
-    FACE_FIELDS: ClassVar[list[str]] = ["embedding", "confidence", "age", "gender", "race", "cameras"]
+    FACE_FIELDS: ClassVar[list[str]] = ["embedding", "confidence", "age", "gender", "cameras"]
 
     # Stream item structure - image + camera string
     STREAM_ITEM_FIELDS: ClassVar[list[str]] = ["image_data", "camera"]
