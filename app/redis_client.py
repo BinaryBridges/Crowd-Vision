@@ -1,5 +1,3 @@
-import base64
-import contextlib
 import os
 from typing import ClassVar
 
@@ -15,6 +13,23 @@ class RedisClient:
     # Stream item structure - image + camera string
     STREAM_ITEM_FIELDS: ClassVar[list[str]] = ["image_data", "camera"]
 
+    @staticmethod
+    def resize_for_motion_detection(image, max_width=None):
+        """
+        Resize image specifically for motion detection (optimized for speed).
+        This should be used for motion detection only, not for images going to the stream.
+        """
+        if max_width is None:
+            max_width = int(os.getenv("MOTION_DETECTION_RESIZE_WIDTH", "640"))
+
+        height, width = image.shape[:2]
+        if width > max_width:
+            scale = max_width / width
+            new_width = max_width
+            new_height = int(height * scale)
+            return cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        return image
+
     def __init__(self):
         # Basic connection setup - gets values from your k8s config
         self.host = os.getenv("REDIS_HOST", "localhost")
@@ -23,9 +38,12 @@ class RedisClient:
         # Database 0 for data storage
         self.storage = redis.Redis(host=self.host, port=self.port, db=0, decode_responses=True)
 
-        # Database 1 for streams (no decode_responses for binary data)
+        # Database 1 for streams (simple, fast connection)
         self.streams = redis.Redis(
-            host=self.host, port=self.port, db=int(os.getenv("REDIS_DB_STREAMS", "1")), decode_responses=False
+            host=self.host,
+            port=self.port,
+            db=int(os.getenv("REDIS_DB_STREAMS", "1")),
+            decode_responses=False
         )
 
         # Queue names from config
@@ -44,120 +62,45 @@ class RedisClient:
         return self.storage.hset(key, mapping=data_to_store)
 
     def put_image_in_stream(self, image, camera):
-        """Put an image and camera string into the stream."""
-        # Validate inputs
-        if not isinstance(camera, str):
-            raise TypeError("camera must be a string")
+        """
+        Put an image into the stream - simple and fast.
+        """
+        # Get image properties
+        height, width, channels = image.shape
 
-        # Handle different image input types
-        if isinstance(image, np.ndarray):
-            # OpenCV image array - encode as JPEG
-            success, buffer = cv2.imencode(".jpg", image)
-            if not success:
-                raise ValueError("Failed to encode image as JPEG")
-            image_bytes = buffer.tobytes()
-        elif isinstance(image, (bytes, bytearray)):
-            # Already bytes
-            image_bytes = bytes(image)
-        else:
-            raise TypeError("image must be numpy array, bytes, or bytearray")
+        # Store raw numpy array data directly
+        image_bytes = image.tobytes()
 
-        # Encode image as base64 for Redis storage
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        # Store with metadata for reconstruction
+        stream_data = {
+            b"image_data": image_bytes,
+            b"camera": camera.encode("utf-8"),
+            b"height": str(height).encode("utf-8"),
+            b"width": str(width).encode("utf-8"),
+            b"channels": str(channels).encode("utf-8"),
+            b"dtype": str(image.dtype).encode("utf-8")
+        }
 
-        # Create stream item
-        stream_data = {b"image_data": image_b64.encode("utf-8"), b"camera": camera.encode("utf-8")}
-
-        # Add to stream and return the message ID
+        # Add to stream
         message_id = self.streams.xadd(self.image_queue.encode("utf-8"), stream_data)
         return message_id.decode("utf-8")
 
     def take_image_from_stream(self, consumer_group=None, consumer_name=None, count=1, block=1000):
-        """Take an image from the stream."""
-        try:
-            if consumer_group and consumer_name:
-                # Use consumer group for reliable processing
-                # First try to read pending messages
-                try:
-                    pending = self.streams.xreadgroup(
-                        consumer_group.encode("utf-8"),
-                        consumer_name.encode("utf-8"),
-                        {self.image_queue.encode("utf-8"): b"0"},
-                        count=count,
-                        block=0,
-                    )
-                    if pending and pending[0][1]:
-                        return self._parse_stream_messages(pending[0][1])
-                except redis.exceptions.ResponseError:
-                    # Consumer group doesn't exist, create it
-                    with contextlib.suppress(redis.exceptions.ResponseError):
-                        self.streams.xgroup_create(
-                            self.image_queue.encode("utf-8"), consumer_group.encode("utf-8"), id=b"0", mkstream=True
-                        )
+        """
+        Take an image from the stream for processing.
 
-                # Read new messages
-                messages = self.streams.xreadgroup(
-                    consumer_group.encode("utf-8"),
-                    consumer_name.encode("utf-8"),
-                    {self.image_queue.encode("utf-8"): b">"},
-                    count=count,
-                    block=block,
-                )
-            else:
-                # Simple read without consumer group
-                messages = self.streams.xread({self.image_queue.encode("utf-8"): b"$"}, count=count, block=block)
+        Args:
+            consumer_group: Consumer group name for reliable processing
+            consumer_name: Consumer name within the group
+            count: Number of messages to read
+            block: Milliseconds to block waiting for messages
 
-            if messages and messages[0][1]:
-                return self._parse_stream_messages(messages[0][1])
-            else:
-                return []
-
-        except redis.exceptions.ResponseError as e:
-            if "NOGROUP" in str(e):
-                # Consumer group doesn't exist
-                return []
-            raise
-
-    @staticmethod
-    def _parse_stream_messages(raw_messages):
-        """Parse raw stream messages into usable format."""
-        parsed_messages = []
-
-        for message_id, fields in raw_messages:
-            # Decode message ID
-            msg_id = message_id.decode("utf-8")
-
-            # Parse fields
-            field_dict = {}
-            for i in range(0, len(fields), 2):
-                key = fields[i].decode("utf-8")
-                value = fields[i + 1]
-
-                if key == "image_data":
-                    # Decode base64 image data back to bytes
-                    image_b64 = value.decode("utf-8")
-                    image_bytes = base64.b64decode(image_b64)
-                    # Convert back to OpenCV image
-                    image_array = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
-                    field_dict["image"] = image_array
-                elif key == "camera":
-                    field_dict["camera"] = value.decode("utf-8")
-
-            parsed_messages.append({
-                "message_id": msg_id,
-                "image": field_dict.get("image"),
-                "camera": field_dict.get("camera"),
-            })
-
-        return parsed_messages
-
-    def acknowledge_message(self, consumer_group, message_id):
-        """Acknowledge a message has been processed (when using consumer groups)."""
-        if consumer_group:
-            return self.streams.xack(
-                self.image_queue.encode("utf-8"), consumer_group.encode("utf-8"), message_id.encode("utf-8")
-            )
-        return None
+        Returns:
+            List of parsed messages with reconstructed numpy arrays
+        """
+        # Implementation placeholder - not implemented yet
+        # This will be used later for pulling images from the stream
+        pass
 
 
 # Create one instance to use everywhere
