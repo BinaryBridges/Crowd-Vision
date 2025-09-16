@@ -1,19 +1,61 @@
-import sys
-import argparse
 import logging
-import cv2
-import numpy as np
 import os
+import pathlib
 import time
+
+import cv2
+import redis
+
+from app.performance_utils import PerformanceMonitor, VideoProcessor, optimize_opencv_performance, timer
 from app.redis_client import redis_client
-from app.performance_utils import VideoProcessor, PerformanceMonitor, timer, optimize_opencv_performance
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _process_single_frame(image, last_image_resized, performance_monitor):
+    """Process a single frame for motion detection."""
+    # Resize current image for motion detection (640px - good balance)
+    resized_current = redis_client.resize_for_motion_detection(image)
+
+    if last_image_resized is not None:
+        with timer("motion_detection"):
+            motion_detected = motion_detection(last_image_resized, resized_current, threshold=30, min_motion_pixels=50)
+            if motion_detected:
+                # Send FULL RESOLUTION image immediately
+                with timer("stream_upload"):
+                    redis_client.put_image_in_stream(image, "camera_001")
+
+    performance_monitor.update()
+    return resized_current
+
+
+def _process_video_frames(path_in):
+    """Process video frames for motion detection."""
+    with VideoProcessor(path_in, target_fps=1.0) as video_proc:
+        performance_monitor = PerformanceMonitor("MotionDetection")
+        last_image_resized = None
+
+        logger.info("Starting simple frame processing")
+
+        for processed_count, (success, image) in enumerate(video_proc.read_frames(), start=1):
+            if not success:
+                break
+
+            last_image_resized = _process_single_frame(image, last_image_resized, performance_monitor)
+
+            # Log progress periodically
+            if processed_count % 10 == 0:
+                performance_monitor.log_stats()
+
+        # Final performance summary
+        final_stats = performance_monitor.get_stats()
+        logger.info("=== PROCESSING COMPLETE ===")
+        logger.info("Total frames processed: %s", final_stats["frames_processed"])
+        logger.info("Total processing time: %.2f seconds", final_stats["elapsed_time"])
+        logger.info("Average processing speed: %.2f fps", final_stats["average_fps"])
+
 
 def start_motion_detection_worker():
     """Optimized main loop for motion detection worker."""
@@ -25,80 +67,54 @@ def start_motion_detection_worker():
 
     for attempt in range(max_retries):
         try:
-            # Test Redis connection
-            redis_client.storage.ping()
+            redis_client.ping()
             logger.info("Redis connection successful")
             break
-        except Exception as e:
-            logger.warning(f"Redis connection attempt {attempt + 1}/{max_retries} failed: {e}")
+        except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
+            logger.warning("Redis connection attempt %s / %s failed: %s", attempt + 1, max_retries, e)
             if attempt < max_retries - 1:
-                logger.info(f"Retrying in {retry_delay} seconds...")
+                logger.info("Retrying in %s seconds...", retry_delay)
                 time.sleep(retry_delay)
             else:
-                logger.error("Failed to connect to Redis after all retries")
+                logger.exception("Failed to connect to Redis after all retries")
                 return 1
 
     # Apply OpenCV optimizations
     optimize_opencv_performance()
 
-    pathIn = "./app/video/people_walking_1080.mp4"
+    path_in = "./app/video/people_walking_1080.mp4"
 
     # Check if video file exists
-    if not os.path.exists(pathIn):
-        logger.error(f"Video file does not exist: {pathIn}")
-        logger.info(f"Current working directory: {os.getcwd()}")
-        logger.info(f"Files in current directory: {os.listdir('.')}")
+    if not pathlib.Path(path_in).exists():
+        logger.error("Video file does not exist: %s", path_in)
+        logger.info("Current working directory: %s", pathlib.Path.cwd())
+        logger.info("Files in current directory: %s", os.listdir("."))
         return 0
 
     # Use optimized video processor
     try:
-        with VideoProcessor(pathIn, target_fps=1.0) as video_proc:
-            performance_monitor = PerformanceMonitor("MotionDetection")
+        _process_video_frames(path_in)
 
-            # Real-time processing (simple and fast)
-            last_image_resized = None
-            processed_count = 0
+    except (
+        redis.exceptions.ConnectionError,
+        redis.exceptions.TimeoutError,
+        redis.exceptions.RedisError,
+        cv2.error,
+        OSError,
+    ):
+        # Operational errors we expect and want to report/exit on
+        logger.exception("Error in motion detection worker")
+        # If you have cleanup to do, do it here before returning
+        raise  # or `return 1` if this is inside a function and you prefer exit codes
 
-            logger.info("Starting simple frame processing")
+    except KeyboardInterrupt:
+        logger.info("Motion detection worker interrupted by user")
+        raise  # or `return 0` if you intentionally treat this as a clean stop
 
-            for success, image in video_proc.read_frames():
-                if not success:
-                    break
-
-                # Resize current image for motion detection (640px - good balance)
-                resized_current = redis_client.resize_for_motion_detection(image)
-
-                if last_image_resized is not None:
-                    with timer("motion_detection"):
-                        if motion_detection(last_image_resized, resized_current, threshold=30, min_motion_pixels=50):
-                            # Send FULL RESOLUTION image immediately
-                            with timer("stream_upload"):
-                                redis_client.put_image_in_stream(image, "camera_001")
-
-                # Store the resized version for next iteration (avoid re-resizing)
-                last_image_resized = resized_current
-                processed_count += 1
-                performance_monitor.update()
-
-                # Log progress periodically
-                if processed_count % 10 == 0:
-                    performance_monitor.log_stats()
-
-            # Real-time processing complete (no remaining batch to process)
-
-            # Final performance summary
-            final_stats = performance_monitor.get_stats()
-            logger.info(f"=== PROCESSING COMPLETE ===")
-            logger.info(f"Total frames processed: {final_stats['frames_processed']}")
-            logger.info(f"Total processing time: {final_stats['elapsed_time']:.2f} seconds")
-            logger.info(f"Average processing speed: {final_stats['average_fps']:.2f} fps")
-
-    except Exception as e:
-        logger.error(f"Error in motion detection worker: {e}")
-        return 1
-
+    # If not in a function, you can continue; if in a function, return success code
     logger.info("Motion detection worker completed successfully")
     return 0
+
 
 def process_task(task=None):
     """Process a single unit of work."""
@@ -120,6 +136,7 @@ def motion_detection(image_1, image_2, threshold=25, min_motion_pixels=100):
 
     Returns:
         bool: True if motion detected, False otherwise
+
     """
     # Step 1: Convert both images from BGR color to grayscale
     # Grayscale conversion reduces computational complexity and focuses on intensity changes
@@ -141,6 +158,3 @@ def motion_detection(image_1, image_2, threshold=25, min_motion_pixels=100):
     motion_detected = motion_pixel_count > min_motion_pixels
 
     return motion_detected
-
-
-

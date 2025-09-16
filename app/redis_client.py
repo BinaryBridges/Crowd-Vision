@@ -2,7 +2,6 @@ import os
 from typing import ClassVar
 
 import cv2
-import numpy as np
 import redis
 
 
@@ -40,10 +39,7 @@ class RedisClient:
 
         # Database 1 for streams (simple, fast connection)
         self.streams = redis.Redis(
-            host=self.host,
-            port=self.port,
-            db=int(os.getenv("REDIS_DB_STREAMS", "1")),
-            decode_responses=False
+            host=self.host, port=self.port, db=int(os.getenv("REDIS_DB_STREAMS", "1")), decode_responses=False
         )
 
         # Queue names from config
@@ -78,7 +74,7 @@ class RedisClient:
             b"height": str(height).encode("utf-8"),
             b"width": str(width).encode("utf-8"),
             b"channels": str(channels).encode("utf-8"),
-            b"dtype": str(image.dtype).encode("utf-8")
+            b"dtype": str(image.dtype).encode("utf-8"),
         }
 
         # Add to stream
@@ -97,10 +93,14 @@ class RedisClient:
 
         Returns:
             List of parsed messages with reconstructed numpy arrays
+
         """
         # Implementation placeholder - not implemented yet
         # This will be used later for pulling images from the stream
-        pass
+
+    def ping(self):
+        """Test Redis connection."""
+        return self.storage.ping()
 
 
 # Create one instance to use everywhere
