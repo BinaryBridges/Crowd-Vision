@@ -18,6 +18,7 @@ ignore = [
     "EXE",  # flake8-executable: Executable file checks
     "T10",  # flake8-debugger: Debugger import detection
     "TID",  # flake8-tidy-imports: Import organization
+    
 
     #### Docstring rules (disabled for faster development)
     "D100", # Missing docstring in public module
@@ -59,6 +60,7 @@ ignore = [
     #### Control flow rules
     "RET505", # Unnecessary `else` after `return` statement (conflicts with RET506)
     "RET506", # Consider moving this statement to an `else` block (conflicts with RET505)
+    "RET504", # Unnecessary variable assignment before return statement
 
     #### Code complexity relaxations
     "PLR0912", # Too many branches

@@ -1,13 +1,13 @@
-FROM python:3.11-slim
+FROM python:3.11
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Requirements (empty for now; keeps layer stable if you add later)
+# Install Python requirements
 COPY requirements.txt .
-RUN pip install -r requirements.txt || true
+RUN pip install -r requirements.txt
 
 # App code
 COPY app ./app
