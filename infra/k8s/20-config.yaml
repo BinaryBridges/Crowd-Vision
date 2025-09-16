@@ -14,7 +14,13 @@ data:
   IMAGE_PROCESSOR_QUEUE: "image_queue"       # <- change this to whatever you want
   RESULTS_QUEUE: "results_queue"             # <- change this to whatever you want
 
-  # Basic worker settings - adjust numbers as needed
-  MOTION_DETECTION_BATCH_SIZE: "5"           # <- how many items to process at once
-  IMAGE_PROCESSOR_BATCH_SIZE: "10"           # <- how many items to process at once
-  WORKER_POLL_TIMEOUT: "1000"                # <- how long to wait for new items (ms)
+  # Optimized worker settings for better performance
+  MOTION_DETECTION_BATCH_SIZE: "8"           # <- optimized batch size for motion detection
+  IMAGE_PROCESSOR_BATCH_SIZE: "15"           # <- optimized batch size for image processing
+  WORKER_POLL_TIMEOUT: "500"                 # <- reduced timeout for better responsiveness (ms)
+
+  # Performance optimization settings
+  MAX_IMAGE_WIDTH: "640"                     # <- max width for general processing optimization
+  MOTION_DETECTION_RESIZE_WIDTH: "640"       # <- width for motion detection (640px for good balance)
+  FACE_ANALYSIS_JPEG_QUALITY: "90"           # <- high quality JPEG for face analysis (90 = high quality)
+  ENABLE_PERFORMANCE_LOGGING: "true"         # <- enable detailed performance logging
