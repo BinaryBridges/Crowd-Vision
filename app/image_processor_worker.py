@@ -20,7 +20,7 @@ from insightface.app import FaceAnalysis
 
 from app import config
 from app.redis_client import redis_client
-from app.utils import format_demographics, load_bgr_image
+from app.utils import format_demographics
 
 
 def _init_model() -> FaceAnalysis:
@@ -93,11 +93,6 @@ def _process_image_array(model: FaceAnalysis, img_bgr, camera: str = "sample") -
         _store_face_data(face, camera)
 
 
-def _run_once_on_sample(model: FaceAnalysis) -> None:
-    img = load_bgr_image(config.SAMPLE_IMAGE)
-    _process_image_array(model, img, camera="sample")
-
-
 def _run_stream_loop(model: FaceAnalysis) -> None:
     group = config.REDIS_CONSUMER_GROUP
     name = config.REDIS_CONSUMER_NAME
@@ -123,27 +118,12 @@ def _run_stream_loop(model: FaceAnalysis) -> None:
 
 
 def start_image_processor_worker():
-    """
-    Worker entrypoint:
-    - For now: process the sample image once and log demographics.
-    - Later (k8s stream): remove the sample step and rely solely on the stream loop.
-    """
     model = _init_model()
-    _run_once_on_sample(model)
-    print(
-        json.dumps({"event": "info", "detail": "Stream processing disabled - worker completed sample processing"}),
-        flush=True,
-    )
 
-    # TODO: Enable this later when you want stream processing
-    # try:
-    #     _run_stream_loop(model)
-    # except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError, redis.exceptions.RedisError) as e:
-    #     # Redis connection issues - k8s will restart the pod
-    #     print(json.dumps({"event": "error", "detail": f"redis_error: {e}"}), flush=True)
-    # except KeyboardInterrupt:
-    #     # Graceful shutdown
-    #     print(json.dumps({"event": "info", "detail": "worker_shutdown"}), flush=True)
-    # except OSError as e:
-    #     # Network or system-level issues
-    #     print(json.dumps({"event": "error", "detail": f"system_error: {e}"}), flush=True)
+    try:
+        _run_stream_loop(model)
+    except KeyboardInterrupt:
+        print(json.dumps({"event": "info", "detail": "worker_shutdown"}), flush=True)
+    except Exception as e:
+        print(json.dumps({"event": "error", "detail": f"worker_crashed: {e}"}), flush=True)
+        raise

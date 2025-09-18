@@ -1,10 +1,10 @@
-FROM python:3.11
+FROM python:3.13.7-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 # Install system dependencies needed for OpenCV and insightface
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     g++ \
@@ -27,7 +27,6 @@ RUN pip install -r requirements.txt
 
 # App code
 COPY app ./app
-COPY samples ./samples
 
 # Pre-download InsightFace model during build to avoid startup delays
 RUN python -c "import os; os.environ['INSIGHTFACE_ONNX_PROVIDERS'] = 'CPUExecutionProvider'; from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_s', allowed_modules=['detection', 'genderage'], providers=['CPUExecutionProvider']); app.prepare(ctx_id=-1, det_size=(640, 640)); print('Model downloaded successfully')"

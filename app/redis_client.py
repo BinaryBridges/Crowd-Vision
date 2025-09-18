@@ -2,6 +2,7 @@ import os
 from typing import ClassVar
 
 import cv2
+import numpy as np
 import redis
 
 
@@ -81,22 +82,79 @@ class RedisClient:
         message_id = self.streams.xadd(self.image_queue.encode("utf-8"), stream_data)
         return message_id.decode("utf-8")
 
+    def _ensure_consumer_group(self, groupname: str) -> None:
+        """
+        Create the consumer group if it does not exist.
+        Uses id='0' so new workers can read any backlog already in the stream.
+        """
+        try:
+            # mkstream=True will create the stream key if it doesn't exist yet.
+            self.streams.xgroup_create(
+                name=self.image_queue,
+                groupname=groupname,
+                id="0",
+                mkstream=True,
+            )
+        except redis.exceptions.ResponseError as e:
+            # Ignore if group already exists; re-raise anything else
+            if "BUSYGROUP" not in str(e):
+                raise
+
     def take_image_from_stream(self, consumer_group=None, consumer_name=None, count=1, block=1000):
         """
-        Take an image from the stream for processing.
-
-        Args:
-            consumer_group: Consumer group name for reliable processing
-            consumer_name: Consumer name within the group
-            count: Number of messages to read
-            block: Milliseconds to block waiting for messages
-
-        Returns:
-            List of parsed messages with reconstructed numpy arrays
-
+        Read images from Redis stream.
+        Returns a list of dicts like:
+        [{ "message_id": str, "image": np.ndarray, "camera": str }]
         """
-        # Implementation placeholder - not implemented yet
-        # This will be used later for pulling images from the stream
+        stream_key = self.image_queue  # str is fine; client encodes
+
+        # If using groups, ensure group exists before reading
+        if consumer_group and consumer_name:
+            self._ensure_consumer_group(consumer_group)
+            try:
+                resp = self.streams.xreadgroup(
+                    groupname=consumer_group,
+                    consumername=consumer_name,
+                    streams={stream_key: ">"},
+                    count=count,
+                    block=block,
+                )
+            except redis.exceptions.ResponseError as e:
+                # In case of race where group was dropped between ensure & read
+                if "NOGROUP" in str(e):
+                    self._ensure_consumer_group(consumer_group)
+                    resp = self.streams.xreadgroup(
+                        groupname=consumer_group,
+                        consumername=consumer_name,
+                        streams={stream_key: ">"},
+                        count=count,
+                        block=block,
+                    )
+                else:
+                    raise
+        else:
+            resp = self.streams.xread({stream_key: "0"}, count=count, block=block)
+
+        if not resp:
+            return []
+
+        msgs = []
+        for _key, entries in resp:
+            for mid, fields in entries:
+                try:
+                    h = int(fields[b"height"].decode())
+                    w = int(fields[b"width"].decode())
+                    c = int(fields[b"channels"].decode())
+                    dtype = np.dtype(fields[b"dtype"].decode())
+                    img = np.frombuffer(fields[b"image_data"], dtype=dtype).reshape((h, w, c))
+                    cam = fields[b"camera"].decode()
+                    msgs.append({"message_id": mid.decode(), "image": img, "camera": cam})
+                except (KeyError, ValueError, TypeError, UnicodeDecodeError) as e:
+                    print(f"error reconstructing image: {e}", flush=True)
+        return msgs
+
+    def acknowledge_message(self, group: str, message_id: str) -> None:
+        self.streams.xack(self.image_queue, group, message_id)
 
     def ping(self):
         """Test Redis connection."""
