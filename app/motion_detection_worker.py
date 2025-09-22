@@ -14,18 +14,61 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 
-def _process_single_frame(image, last_image_resized, performance_monitor):
-    """Process a single frame for motion detection."""
-    # Resize current image for motion detection (640px - good balance)
+FORCE_ENQUEUE_FIRST_FRAME = True  # can move to config if you prefer
+ENQUEUE_EVERY_N_FRAMES = 0  # 0 = disabled; set e.g. 30 to sample
+
+
+def _process_single_frame(image, last_image_resized, performance_monitor, *, frame_index: int):
     resized_current = redis_client.resize_for_motion_detection(image)
 
-    if last_image_resized is not None:
-        with timer("motion_detection"):
-            motion_detected = motion_detection(last_image_resized, resized_current, threshold=30, min_motion_pixels=50)
-            if motion_detected:
-                # Send FULL RESOLUTION image immediately
-                with timer("stream_upload"):
-                    redis_client.put_image_in_stream(image, "camera_001")
+    queued_mid = None
+    motion_detected = False
+    reason = None
+
+    # 1) Bootstrap: send first frame no matter what
+    if frame_index == 1 and FORCE_ENQUEUE_FIRST_FRAME:
+        queued_mid = redis_client.put_image_in_stream(
+            image,
+            "camera_001",
+            frame=frame_index,
+            t_ns=time.time_ns(),
+        )
+        reason = "first_frame"
+    else:
+        # 2) Normal motion path
+        if last_image_resized is not None:
+            with timer("motion_detection"):
+                motion_detected = motion_detection(
+                    last_image_resized, resized_current, threshold=30, min_motion_pixels=50
+                )
+        # 3) Periodic sampling if you want some non-motion frames too
+        if not queued_mid and ENQUEUE_EVERY_N_FRAMES and frame_index % ENQUEUE_EVERY_N_FRAMES == 0:
+            queued_mid = redis_client.put_image_in_stream(
+                image,
+                "camera_001",
+                frame=frame_index,
+                t_ns=time.time_ns(),
+            )
+            reason = "periodic"
+
+        # Enqueue on motion
+        if not queued_mid and motion_detected:
+            queued_mid = redis_client.put_image_in_stream(
+                image,
+                "camera_001",
+                frame=frame_index,
+                t_ns=time.time_ns(),
+            )
+            reason = "motion"
+
+    # Per-frame log (now includes reason if enqueued)
+    logger.info(
+        "Frame %d: motion=%s%s%s",
+        frame_index,
+        motion_detected,
+        f" enqueued_reason={reason}" if reason else "",
+        f" queued_message_id={queued_mid}" if queued_mid else "",
+    )
 
     performance_monitor.update()
     return resized_current
@@ -43,13 +86,16 @@ def _process_video_frames(path_in):
             if not success:
                 break
 
-            last_image_resized = _process_single_frame(image, last_image_resized, performance_monitor)
+            last_image_resized = _process_single_frame(
+                image,
+                last_image_resized,
+                performance_monitor,
+                frame_index=processed_count,  # <-- NEW
+            )
 
-            # Log progress periodically
             if processed_count % 10 == 0:
                 performance_monitor.log_stats()
 
-        # Final performance summary
         final_stats = performance_monitor.get_stats()
         logger.info("=== PROCESSING COMPLETE ===")
         logger.info("Total frames processed: %s", final_stats["frames_processed"])
