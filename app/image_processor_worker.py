@@ -1,3 +1,4 @@
+import hashlib  # Moved to top-level
 import json
 import os
 import warnings
@@ -44,8 +45,6 @@ def _stable_embedding_id(embedding: np.ndarray, decimals: int = 3) -> str:
     2) round to 'decimals'
     3) sha256 hex
     """
-    import hashlib
-
     red = reduce_embedding_for_tracking(np.asarray(embedding, dtype=np.float32))
     q = np.round(red.astype(np.float32), decimals=decimals)
     return hashlib.sha256(q.tobytes()).hexdigest()
@@ -203,8 +202,8 @@ def _run_stream_loop(model: FaceAnalysis) -> None:
                     _process_image_array(model, img, cam, frame=frame, t_ns=t_ns)
                 if mid:
                     redis_client.acknowledge_message(group, mid)
-            except Exception as e:
-                # don’t crash the whole worker on a single bad frame
+            except (AttributeError, TypeError, ValueError, KeyError, IndexError) as e:
+                # don't crash the whole worker on a single bad frame
                 print(
                     json.dumps({
                         "event": "error",

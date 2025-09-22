@@ -162,13 +162,13 @@ class RedisClient:
                     if b"frame" in fields:
                         try:
                             frame = int(fields[b"frame"].decode())
-                        except Exception:
+                        except (ValueError, TypeError, UnicodeDecodeError):
                             frame = None
                     t_ns = None
                     if b"t_ns" in fields:
                         try:
                             t_ns = int(fields[b"t_ns"].decode())
-                        except Exception:
+                        except (ValueError, TypeError, UnicodeDecodeError):
                             t_ns = None
 
                     msgs.append({
@@ -235,7 +235,7 @@ class RedisClient:
 
         dim = vec.shape[-1]
         # ensure L2 normalized (just in case caller didn't)
-        vec = vec / (np.linalg.norm(vec) + 1e-9)
+        vec = vec / (np.linalg.norm(vec) + 1e-9)  # noqa: PLR6104
 
         # batch HMGET to reduce round-trips
         for i in range(0, len(ids), 50):
@@ -250,7 +250,7 @@ class RedisClient:
                 if not v64:
                     continue
                 cand = self._b64_to_vec(v64, dim)
-                cand = cand / (np.linalg.norm(cand) + 1e-9)
+                cand = cand / (np.linalg.norm(cand) + 1e-9)  # noqa: PLR6104
                 sim = float(np.dot(vec, cand))
                 if sim >= threshold:
                     return fid  # found duplicate
