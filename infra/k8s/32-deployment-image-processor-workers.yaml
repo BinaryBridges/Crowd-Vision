@@ -5,7 +5,7 @@ metadata:
   namespace: app
   labels: { app: image-processor-worker, worker-type: image-processor }
 spec:
-  replicas: 2
+  replicas: 1
   selector: { matchLabels: { app: image-processor-worker } }
   template:
     metadata:

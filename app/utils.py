@@ -1,7 +1,7 @@
 import contextlib
+import hashlib
 from typing import Any
 
-import cv2
 import numpy as np
 
 from app import config
@@ -45,8 +45,14 @@ def format_demographics(face_obj) -> dict[str, Any]:
     return {"gender": gender, "age": age_out}
 
 
-def load_bgr_image(path: str) -> np.ndarray:
-    img = cv2.imread(path, cv2.IMREAD_COLOR)
-    if img is None:
-        raise FileNotFoundError(f"Could not read image at: {path}")
-    return img
+def stable_embedding_id(embedding: np.ndarray, decimals: int = 3) -> str:
+    """
+    Produce a stable, jitter-tolerant ID for a face embedding.
+    1) reduce + L2 normalize
+    2) round (quantize) to 'decimals'
+    3) sha1 hash to short hex
+    """
+    red = reduce_embedding_for_tracking(np.asarray(embedding))
+    q = np.round(red.astype(np.float32), decimals=decimals)
+    b = q.tobytes()
+    return hashlib.sha256(b).hexdigest()
