@@ -12,9 +12,7 @@ from typing import Any
 try:
     import requests
 except ImportError as exc:  # pragma: no cover
-    raise SystemExit(
-        "The 'requests' package is required. Install it with: pip install requests"
-    ) from exc
+    raise SystemExit("The 'requests' package is required. Install it with: pip install requests") from exc
 
 from app import config
 
@@ -47,9 +45,7 @@ def post_json(path: str, payload: JsonDict) -> JsonDict:
         return response.json()
     except requests.HTTPError as error:
         message = response.text.strip()
-        raise RuntimeError(
-            f"{path} failed with {response.status_code}: {message or 'no response body'}"
-        ) from error
+        raise RuntimeError(f"{path} failed with {response.status_code}: {message or 'no response body'}") from error
     except requests.RequestException as error:
         raise RuntimeError(f"Request to {path} failed: {error}") from error
 
@@ -185,10 +181,7 @@ def build_gender_distribution_payload(faces_data: list) -> dict:
 
 
 def build_event_payload(
-    faces_data: list,
-    total_faces: int,
-    _event_name: str = "Face Detection Event",
-    event_price: float = 0.0
+    faces_data: list, total_faces: int, _event_name: str = "Face Detection Event", event_price: float = 0.0
 ) -> JsonDict:
     """
     Build complete event payload for Convex /ingest/events endpoint.
@@ -234,9 +227,9 @@ def build_event_payload(
     quality_score = 0.0
     if total_faces > 0:
         quality_score = (
-            (faces_with_age / total_faces * 0.3333) +
-            (faces_with_gender / total_faces * 0.3333) +
-            (faces_with_camera / total_faces * 0.3334)
+            (faces_with_age / total_faces * 0.3333)
+            + (faces_with_gender / total_faces * 0.3333)
+            + (faces_with_camera / total_faces * 0.3334)
         )
 
     # Build the event payload
@@ -247,18 +240,20 @@ def build_event_payload(
             "average": round(sum(ages) / len(ages), 1) if ages else 0.0,
             "median": float(sorted(ages)[len(ages) // 2]) if ages else 0.0,
             "min": min(ages) if ages else 0,
-            "max": max(ages) if ages else 0
+            "max": max(ages) if ages else 0,
         },
         "age_distribution": build_age_distribution_payload(faces_data),
         "gender": gender_counts,
         "gender_distribution": build_gender_distribution_payload(faces_data),
-        "data_quality": round(quality_score, 2)
+        "data_quality": round(quality_score, 2),
     }
 
     return event_payload
 
 
-def create_event(faces_data: list, total_faces: int, event_name: str = "Face Detection Event", event_price: float = 0.0) -> str:
+def create_event(
+    faces_data: list, total_faces: int, event_name: str = "Face Detection Event", event_price: float = 0.0
+) -> str:
     """
     Create a new event in Convex database.
 
@@ -319,7 +314,7 @@ def update_user_with_event(user_id: str, event_id: str, faces_data: list, _total
         "total_gender_distribution": {},
         "total_age": {},
         "total_age_distribution": {},
-        "events": [event_id]
+        "events": [event_id],
     }
 
     # Calculate totals (in production, these would be cumulative)
@@ -349,10 +344,7 @@ def update_user_with_event(user_id: str, event_id: str, faces_data: list, _total
             except (ValueError, TypeError):
                 pass
 
-    user_payload["total_age"] = {
-        "min": min(ages) if ages else 0,
-        "max": max(ages) if ages else 0
-    }
+    user_payload["total_age"] = {"min": min(ages) if ages else 0, "max": max(ages) if ages else 0}
 
     response = post_json("/ingest/users/update", user_payload)
 
@@ -364,7 +356,13 @@ def update_user_with_event(user_id: str, event_id: str, faces_data: list, _total
     return mutation_id
 
 
-def ingest_event_data(faces_data: list, total_faces: int, event_name: str = "Face Detection Event", event_price: float = 0.0, user_id: str | None = None) -> tuple[str, str]:
+def ingest_event_data(
+    faces_data: list,
+    total_faces: int,
+    event_name: str = "Face Detection Event",
+    event_price: float = 0.0,
+    user_id: str | None = None,
+) -> tuple[str, str]:
     """
     Complete workflow: Create event and update user.
 
@@ -388,9 +386,7 @@ def ingest_event_data(faces_data: list, total_faces: int, event_name: str = "Fac
         user_id = DEFAULT_USER_ID
 
     if not user_id:
-        raise ValueError(
-            "user_id must be provided or CONVEX_USER_ID environment variable must be set"
-        )
+        raise ValueError("user_id must be provided or CONVEX_USER_ID environment variable must be set")
 
     print(f"\n{'=' * 80}")
     print("📊 INGESTING DATA TO CONVEX DATABASE")

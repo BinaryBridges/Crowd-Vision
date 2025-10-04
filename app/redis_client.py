@@ -131,9 +131,7 @@ class RedisClient:
 
         print("Redis connections initialized successfully")
 
-    def _create_connection_with_retry(
-        self, db: int, *, decode_responses: bool, description: str
-    ) -> redis.Redis:
+    def _create_connection_with_retry(self, db: int, *, decode_responses: bool, description: str) -> redis.Redis:
         """Create a Redis connection with exponential backoff retry logic."""
         max_retries = int(os.getenv("REDIS_MAX_RETRIES", "30"))  # Up to 30 retries
         base_delay = float(os.getenv("REDIS_BASE_DELAY", "1.0"))  # Start with 1 second
@@ -760,6 +758,7 @@ class RedisClient:
 
     def wait_for_redis(self, timeout: int = 300) -> bool:
         """Wait for Redis to be ready with comprehensive health checks."""
+
         def _fail(msg: str) -> None:
             # Local helper to satisfy the linters “abstract raise” rule
             raise redis.exceptions.RedisError(msg)
