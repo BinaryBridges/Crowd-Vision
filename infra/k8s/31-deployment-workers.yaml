@@ -5,7 +5,7 @@ metadata:
   namespace: app
   labels: { app: motion-detection-worker, worker-type: motion-detection }
 spec:
-  replicas: 1
+  replicas: 2
   selector: { matchLabels: { app: motion-detection-worker } }
   template:
     metadata:

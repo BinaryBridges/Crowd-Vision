@@ -41,6 +41,8 @@ ignore = [
     #### Miscellaneous style rules
     "CPY001", # Missing copyright notice
     "RUF002", # Ambiguous unicode character in docstring
+    "TRY300", # Consider moving this statement to an `else` block
+    "PLR0904", # Too many public methods (disabled for now)
 
     #### Import and formatting rules
     "E402", # Module level import not at top of file
@@ -79,6 +81,7 @@ ignore = [
 
     #### Commented code rules (DISABLED: allows commented out code)
     "ERA001", # Found commented-out code
+
 ]
 
 [tool.ruff.lint.pylint]

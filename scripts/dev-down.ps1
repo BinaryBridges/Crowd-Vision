@@ -1,5 +1,5 @@
 param(
-  [string]$ClusterName = $(if ($env:CLUSTER_NAME) { $env:CLUSTER_NAME } else { "dev" })
+  [string]$ClusterName = $(if ($env:CLUSTER_NAME) { $env:CLUSTER_NAME } else { "crowd-vision" })
 )
 
 $ErrorActionPreference = "Stop"

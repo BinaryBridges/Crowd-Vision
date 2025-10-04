@@ -12,76 +12,98 @@ spec:
       labels: { app: redis }
     spec:
       serviceAccountName: app-sa
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
       containers:
         - name: redis
-          image: redis:7-alpine
+          # Use Redis 8 (built-in Query/JSON/TimeSeries/Bloom)
+          image: redis:8
           args:
             - redis-server
             - --maxmemory
             - "2gb"
             - --maxmemory-policy
             - allkeys-lru
-            # Persistence settings for image processing workload
-            - --save
-            - "900"
-            - "1"
-            - --save
-            - "300"
-            - "10"
-            - --save
-            - "60"
-            - "10000"
+
+            # Lightweight persistence (AOF every second ~= ~1s loss)
             - --appendonly
             - "yes"
             - --appendfsync
             - everysec
-            # Stream settings for high-throughput queues
+
+            # Optional RDB snapshots (keep if you want periodic backups)
+            - --save
+            - "1"
+            - "1"
+            - --save
+            - "5"
+            - "10"
+            - --save
+            - "60"
+            - "1000"
+
+            # Stream node sizing (unchanged in Redis 8)
             - --stream-node-max-bytes
             - "4096"
             - --stream-node-max-entries
             - "100"
-            # Memory optimization for image data
-            - --hash-max-ziplist-entries
+
+            # Update deprecated *ziplist* tunables to *listpack* in Redis 7+/8
+            - --hash-max-listpack-entries
             - "512"
-            - --hash-max-ziplist-value
+            - --hash-max-listpack-value
             - "64"
-            - --list-max-ziplist-size
+            - --list-max-listpack-size
             - "-2"
           ports:
             - containerPort: 6379
               name: redis
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    redis-cli BGSAVE || true
+                    redis-cli SHUTDOWN SAVE
           resources:
             requests: { cpu: "200m", memory: "2Gi" }
             limits:   { cpu: "1000m", memory: "2Gi" }
           livenessProbe:
-            tcpSocket:
-              port: 6379
+            tcpSocket: { port: 6379 }
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
-            exec:
-              command:
-                - redis-cli
-                - ping
-            initialDelaySeconds: 5
+            exec: { command: ["redis-cli","ping"] }
+            initialDelaySeconds: 15
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            exec: { command: ["redis-cli","ping"] }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           volumeMounts:
             - name: redis-data
               mountPath: /data
       volumes:
         - name: redis-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: redis-data-pvc
 ---
 apiVersion: v1
-kind: Service
+kind: PersistentVolumeClaim
 metadata:
-  name: redis
+  name: redis-data-pvc
   namespace: app
   labels: { app: redis }
 spec:
-  selector: { app: redis }
-  ports:
-    - name: redis
-      port: 6379
-      targetPort: 6379
-  type: ClusterIP
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
