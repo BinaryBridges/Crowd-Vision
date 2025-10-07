@@ -1,5 +1,5 @@
 param(
-  [string]$ClusterName    = $(if ($env:CLUSTER_NAME)   { $env:CLUSTER_NAME }   else { "dev" }),
+  [string]$ClusterName    = $(if ($env:CLUSTER_NAME)   { $env:CLUSTER_NAME }   else { "crowd-vision" }),
   [string]$ImageTag       = $(if ($env:IMAGE_TAG)      { $env:IMAGE_TAG }      else { "your-app:dev" }),
   [string]$InstallMetrics = $(if ($env:INSTALL_METRICS){ $env:INSTALL_METRICS} else { "true" }),
   [string]$KustomizePath  = $(if ($env:KUSTOMIZE_PATH) { $env:KUSTOMIZE_PATH } else { "" })
@@ -60,9 +60,11 @@ if ($InstallMetrics -eq "true") {
 Write-Host "==> Apply kustomize: $KustomizePath"
 kubectl apply -k "$KustomizePath" | Out-Host
 
-Write-Host "==> Wait for app deployments (controller, worker)"
+Write-Host "==> Wait for app deployments"
+kubectl -n app rollout status deploy/redis --timeout=120s | Out-Host
 kubectl -n app rollout status deploy/controller --timeout=120s | Out-Host
-kubectl -n app rollout status deploy/worker     --timeout=120s | Out-Host
+kubectl -n app rollout status deploy/motion-detection-worker --timeout=120s | Out-Host
+kubectl -n app rollout status deploy/image-processor-worker --timeout=120s | Out-Host
 
 Write-Host "==> Summary (namespace app)"
 kubectl -n app get deploy,pod,svc,hpa -o wide | Out-Host

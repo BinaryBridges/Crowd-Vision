@@ -5,7 +5,7 @@ metadata:
   namespace: app
 data:
   APP_MODE: "blank"
-  REDIS_HOST: "redis.app.svc.cluster.local"
+  REDIS_HOST: "redis"
   REDIS_PORT: "6379"
   REDIS_DB_STORAGE: "0"
   REDIS_DB_STREAMS: "1"
@@ -24,3 +24,17 @@ data:
   MOTION_DETECTION_RESIZE_WIDTH: "640"       # <- width for motion detection (640px for good balance)
   FACE_ANALYSIS_JPEG_QUALITY: "90"           # <- high quality JPEG for face analysis (90 = high quality)
   ENABLE_PERFORMANCE_LOGGING: "true"         # <- enable detailed performance logging
+
+  # Face search configuration (RedisSearch only)
+  REDISEARCH_INDEX_NAME: "faces_idx"         # <- RedisSearch index name for face vectors
+
+  # Redis connection configuration
+  REDIS_MAX_RETRIES: "30"                    # <- maximum connection retry attempts (30 = ~5 minutes with backoff)
+  REDIS_BASE_DELAY: "1.0"                    # <- initial retry delay in seconds
+  REDIS_MAX_DELAY: "30.0"                    # <- maximum retry delay in seconds (exponential backoff cap)
+
+  # Convex Database Integration
+  CONVEX_BASE_URL: "https://quirky-capybara-814.convex.site"   # <- Convex API base URL
+  CONVEX_EVENT_ID: "j57dv95br7185tr0c8d8rv6fb17ryx3a"  # <- Event ID for event updates
+  CONVEX_USER_ID: "j979ha9j8knqzqrjbpns62wt7x7rykva"  # <- User ID for user totals updates
+  CONVEX_EVENT_PRICE: "0.0"                  # <- Default event price

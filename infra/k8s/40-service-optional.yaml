@@ -1,5 +1,22 @@
-#ONLY NEEDED IF EXPOSING PORTS
-
+# Redis service (required for worker connectivity)
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: app
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+  type: ClusterIP
+---
+# Controller service (optional - only needed if exposing ports)
 apiVersion: v1
 kind: Service
 metadata:
