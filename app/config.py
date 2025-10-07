@@ -27,6 +27,6 @@ REDISEARCH_INDEX_NAME = os.getenv("REDISEARCH_INDEX_NAME", "faces_idx")
 
 # Convex Database Integration
 CONVEX_BASE_URL = os.getenv("CONVEX_BASE_URL", "http://127.0.0.1:3210")
+CONVEX_EVENT_ID = os.getenv("CONVEX_EVENT_ID", "j97bnd4prz3ecpw2fcat9ks5yn7rmah0")
 CONVEX_USER_ID = os.getenv("CONVEX_USER_ID", "j97bnd4prz3ecpw2fcat9ks5yn7rmah0")
-CONVEX_EVENT_NAME = os.getenv("CONVEX_EVENT_NAME", "Face Detection Event")
 CONVEX_EVENT_PRICE = float(os.getenv("CONVEX_EVENT_PRICE", "0.0"))

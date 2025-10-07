@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Convex database integration for storing event analytics and user data.
-Handles event creation and user updates with aggregated statistics.
+Convex database integration for updating event analytics.
+Handles event updates with aggregated statistics and demographics.
 """
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 try:
@@ -18,9 +17,37 @@ from app import config
 
 # Get Convex configuration from config module
 BASE_URL = config.CONVEX_BASE_URL.rstrip("/")
+DEFAULT_EVENT_ID = config.CONVEX_EVENT_ID
 DEFAULT_USER_ID = config.CONVEX_USER_ID
 
 JsonDict = dict[str, Any]
+
+
+def _calculate_median(ages: list[int]) -> float:
+    """
+    Calculate the median of a list of ages.
+
+    Args:
+        ages: List of integer ages
+
+    Returns:
+        Median value as float, or 0.0 if list is empty
+
+    """
+    if not ages:
+        return 0.0
+
+    sorted_ages = sorted(ages)
+    n = len(sorted_ages)
+
+    if n % 2 == 0:
+        # Even number of elements: average of two middle elements
+        mid1 = sorted_ages[n // 2 - 1]
+        mid2 = sorted_ages[n // 2]
+        return float((mid1 + mid2) / 2)
+    else:
+        # Odd number of elements: middle element
+        return float(sorted_ages[n // 2])
 
 
 def post_json(path: str, payload: JsonDict) -> JsonDict:
@@ -28,7 +55,7 @@ def post_json(path: str, payload: JsonDict) -> JsonDict:
     Post JSON payload to Convex endpoint.
 
     Args:
-        path: API endpoint path (e.g., "/ingest/events")
+        path: API endpoint path (e.g., "/events/update-analysis")
         payload: JSON payload to send
 
     Returns:
@@ -180,20 +207,21 @@ def build_gender_distribution_payload(faces_data: list) -> dict:
     return gender_distribution
 
 
-def build_event_payload(
-    faces_data: list, total_faces: int, _event_name: str = "Face Detection Event", event_price: float = 0.0
+def build_event_update_payload(
+    faces_data: list, total_faces: int, event_id: str, user_id: str, event_price: float = 0.0
 ) -> JsonDict:
     """
-    Build complete event payload for Convex /ingest/events endpoint.
+    Build complete event update payload for Convex /events/update-analysis endpoint.
 
     Args:
         faces_data: List of face data dictionaries
         total_faces: Total number of unique faces
-        event_name: Name of the event
+        event_id: Event ID to update
+        user_id: User ID to update totals for
         event_price: Price associated with the event
 
     Returns:
-        Complete event payload dictionary
+        Complete event update payload dictionary
 
     """
     # Calculate age statistics
@@ -232,155 +260,60 @@ def build_event_payload(
             + (faces_with_camera / total_faces * 0.3334)
         )
 
-    # Build the event payload
+    # Build the event update payload
     event_payload = {
-        "name": str(time.time()),
+        "eventId": event_id,
+        "userId": user_id,
         "price": event_price,
+        "data_quality": round(quality_score, 2),
+        "status": "completed",
+        "favourite": False,  # Default value, can be made configurable if needed
         "age": {
-            "average": round(sum(ages) / len(ages), 1) if ages else 0.0,
-            "median": float(sorted(ages)[len(ages) // 2]) if ages else 0.0,
             "min": min(ages) if ages else 0,
             "max": max(ages) if ages else 0,
+            "average": round(sum(ages) / len(ages), 1) if ages else 0.0,
+            "median": _calculate_median(ages),
         },
         "age_distribution": build_age_distribution_payload(faces_data),
         "gender": gender_counts,
         "gender_distribution": build_gender_distribution_payload(faces_data),
-        "data_quality": round(quality_score, 2),
     }
 
     return event_payload
 
 
-def create_event(
-    faces_data: list, total_faces: int, event_name: str = "Face Detection Event", event_price: float = 0.0
-) -> str:
-    """
-    Create a new event in Convex database.
-
-    Args:
-        faces_data: List of face data dictionaries
-        total_faces: Total number of unique faces
-        event_name: Name of the event
-        event_price: Price associated with the event
-
-    Returns:
-        Event ID from Convex
-
-    Raises:
-        RuntimeError: If event creation fails
-
-    """
-    print(f"\n📤 Creating event in Convex: '{event_name}'")
-
-    event_payload = build_event_payload(faces_data, total_faces, event_name, event_price)
-    response = post_json("/ingest/events", event_payload)
-
-    event_id = response.get("id")
-    if not event_id:
-        raise RuntimeError("Event creation succeeded but no ID was returned")
-
-    print(f"✅ Event created successfully with ID: {event_id}")
-    return event_id
-
-
-def update_user_with_event(user_id: str, event_id: str, faces_data: list, _total_faces: int) -> str:
-    """
-    Update user with new event data, adding to their totals.
-
-    Note: This function sends the current event's data as the new totals.
-    In a real implementation, you would need to fetch existing user data,
-    add the new event data to it, and then send the combined totals.
-
-    Args:
-        user_id: User ID to update
-        event_id: Event ID to associate with user
-        faces_data: List of face data dictionaries
-        total_faces: Total number of unique faces
-
-    Returns:
-        User mutation ID from Convex
-
-    Raises:
-        RuntimeError: If user update fails
-
-    """
-    print(f"\n📤 Updating user {user_id} with event {event_id}")
-
-    # Build user update payload
-    # Note: In production, you'd fetch existing totals and add to them
-    user_payload = {
-        "userId": user_id,
-        "total_gender": {},
-        "total_gender_distribution": {},
-        "total_age": {},
-        "total_age_distribution": {},
-        "events": [event_id],
-    }
-
-    # Calculate totals (in production, these would be cumulative)
-    gender_counts = {"male": 0, "female": 0, "unknown": 0}
-    for face in faces_data:
-        gender = face.get("gender", "").strip().upper()
-        if gender == "M":
-            gender_counts["male"] += 1
-        elif gender == "F":
-            gender_counts["female"] += 1
-        else:
-            gender_counts["unknown"] += 1
-
-    user_payload["total_gender"] = gender_counts
-    user_payload["total_gender_distribution"] = build_gender_distribution_payload(faces_data)
-    user_payload["total_age_distribution"] = build_age_distribution_payload(faces_data)
-
-    # Calculate age totals
-    ages = []
-    for face in faces_data:
-        age_str = face.get("age", "")
-        if age_str and age_str.strip():
-            try:
-                age = int(age_str)
-                if 0 <= age <= 120:
-                    ages.append(age)
-            except (ValueError, TypeError):
-                pass
-
-    user_payload["total_age"] = {"min": min(ages) if ages else 0, "max": max(ages) if ages else 0}
-
-    response = post_json("/ingest/users/update", user_payload)
-
-    mutation_id = response.get("id")
-    if not mutation_id:
-        raise RuntimeError("User update succeeded but no ID was returned")
-
-    print(f"✅ User updated successfully, mutation ID: {mutation_id}")
-    return mutation_id
-
-
-def ingest_event_data(
+def update_event(
     faces_data: list,
     total_faces: int,
-    event_name: str = "Face Detection Event",
     event_price: float = 0.0,
+    event_id: str | None = None,
     user_id: str | None = None,
-) -> tuple[str, str]:
+) -> str:
     """
-    Complete workflow: Create event and update user.
+    Update an existing event in Convex database with analysis results.
 
     Args:
         faces_data: List of face data dictionaries
         total_faces: Total number of unique faces
-        event_name: Name of the event
         event_price: Price associated with the event
-        user_id: User ID to update (uses CONVEX_USER_ID env var if not provided)
+        event_id: Event ID to update (uses CONVEX_EVENT_ID env var if not provided)
+        user_id: User ID to update totals for (uses CONVEX_USER_ID env var if not provided)
 
     Returns:
-        Tuple of (event_id, user_mutation_id)
+        Response from Convex
 
     Raises:
-        RuntimeError: If ingestion fails
-        ValueError: If user_id is not provided and CONVEX_USER_ID is not set
+        RuntimeError: If event update fails
+        ValueError: If event_id or user_id is not provided and corresponding env vars are not set
 
     """
+    # Use provided event_id or fall back to environment variable
+    if event_id is None:
+        event_id = DEFAULT_EVENT_ID
+
+    if not event_id:
+        raise ValueError("event_id must be provided or CONVEX_EVENT_ID environment variable must be set")
+
     # Use provided user_id or fall back to environment variable
     if user_id is None:
         user_id = DEFAULT_USER_ID
@@ -388,20 +321,52 @@ def ingest_event_data(
     if not user_id:
         raise ValueError("user_id must be provided or CONVEX_USER_ID environment variable must be set")
 
+    print(f"\n📤 Updating event in Convex: '{event_id}' for user: '{user_id}'")
+
+    event_payload = build_event_update_payload(faces_data, total_faces, event_id, user_id, event_price)
+    response = post_json("/events/update-analysis", event_payload)
+
+    print(f"✅ Event updated successfully: {event_id}")
+    return response
+
+
+def ingest_event_data(
+    faces_data: list,
+    total_faces: int,
+    event_price: float = 0.0,
+    event_id: str | None = None,
+    user_id: str | None = None,
+) -> str:
+    """
+    Update event with analysis data.
+
+    Args:
+        faces_data: List of face data dictionaries
+        total_faces: Total number of unique faces
+        event_price: Price associated with the event
+        event_id: Event ID to update (uses CONVEX_EVENT_ID env var if not provided)
+        user_id: User ID to update totals for (uses CONVEX_USER_ID env var if not provided)
+
+    Returns:
+        Response from Convex
+
+    Raises:
+        RuntimeError: If event update fails
+        ValueError: If event_id or user_id is not provided and corresponding env vars are not set
+
+    """
     print(f"\n{'=' * 80}")
-    print("📊 INGESTING DATA TO CONVEX DATABASE")
+    print("📊 UPDATING EVENT IN CONVEX DATABASE")
     print(f"{'=' * 80}")
     print(f"Convex URL: {BASE_URL}")
-    print(f"User ID: {user_id}")
+    print(f"Event ID: {event_id or DEFAULT_EVENT_ID}")
+    print(f"User ID: {user_id or DEFAULT_USER_ID}")
 
-    # Step 1: Create event
-    event_id = create_event(faces_data, total_faces, event_name, event_price)
-
-    # Step 2: Update user with event
-    user_mutation_id = update_user_with_event(user_id, event_id, faces_data, total_faces)
+    # Update event with analysis results
+    response = update_event(faces_data, total_faces, event_price, event_id, user_id)
 
     print(f"\n{'=' * 80}")
-    print("✅ CONVEX INGESTION COMPLETE")
+    print("✅ CONVEX EVENT UPDATE COMPLETE")
     print(f"{'=' * 80}\n")
 
-    return event_id, user_mutation_id
+    return response

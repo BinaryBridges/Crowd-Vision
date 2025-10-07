@@ -35,6 +35,6 @@ data:
 
   # Convex Database Integration
   CONVEX_BASE_URL: "https://quirky-capybara-814.convex.site"   # <- Convex API base URL
-  CONVEX_USER_ID: "j977j0gpwnr0k8zj37brahvxxx7rpsmc"  # <- User ID for event association
-  CONVEX_EVENT_NAME: "Face Detection Event"  # <- Default event name
+  CONVEX_EVENT_ID: "j57dv95br7185tr0c8d8rv6fb17ryx3a"  # <- Event ID for event updates
+  CONVEX_USER_ID: "j979ha9j8knqzqrjbpns62wt7x7rykva"  # <- User ID for user totals updates
   CONVEX_EVENT_PRICE: "0.0"                  # <- Default event price

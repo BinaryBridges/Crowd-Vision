@@ -4,7 +4,6 @@ All calculations are performed on data from Redis DB 0 (face storage).
 """
 
 import traceback
-from datetime import UTC, datetime
 from operator import itemgetter
 
 import redis
@@ -86,34 +85,34 @@ def run_all_calculations():
         print("✅ ANALYSIS COMPLETE")
         print("=" * 80 + "\n")
 
-        # Ingest data to Convex database
+        # Update event in Convex database
         try:
             # Get event configuration from config
-            event_name = config.CONVEX_EVENT_NAME
             event_price = config.CONVEX_EVENT_PRICE
+            event_id = config.CONVEX_EVENT_ID
             user_id = config.CONVEX_USER_ID
 
-            # Only attempt ingestion if user_id is configured
-            if user_id:
-                # Add timestamp to event name to ensure uniqueness
-                timestamp_str = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
-                unique_event_name = f"{event_name} - {timestamp_str}"
-
-                event_id, user_mutation_id = ingest_event_data(
+            # Only attempt update if both event_id and user_id are configured
+            if event_id and user_id:
+                response = ingest_event_data(
                     faces_data=faces_data,
                     total_faces=total_faces,
-                    event_name=unique_event_name,
                     event_price=event_price,
+                    event_id=event_id,
                     user_id=user_id,
                 )
-                print("✅ Data successfully ingested to Convex")
-                print(f"   Event ID: {event_id}")
-                print(f"   User Mutation ID: {user_mutation_id}")
+                print("✅ Event and user totals successfully updated in Convex")
+                print(f"   Response: {response}")
             else:
-                print("\n⚠️  Skipping Convex ingestion: CONVEX_USER_ID not configured")
-                print("   Set CONVEX_USER_ID environment variable to enable Convex integration")
+                missing_vars = []
+                if not event_id:
+                    missing_vars.append("CONVEX_EVENT_ID")
+                if not user_id:
+                    missing_vars.append("CONVEX_USER_ID")
+                print(f"\n⚠️  Skipping Convex update: {', '.join(missing_vars)} not configured")
+                print("   Set the missing environment variables to enable Convex integration")
         except (ValueError, RuntimeError, ConnectionError) as convex_error:
-            print(f"\n⚠️  Warning: Failed to ingest data to Convex: {convex_error}")
+            print(f"\n⚠️  Warning: Failed to update event in Convex: {convex_error}")
             print("   Analysis results are still available above")
             traceback.print_exc()
 
